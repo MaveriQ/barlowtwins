@@ -1,0 +1,85 @@
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+{"epoch": 0, "step": 0, "lr_weights": 0.0, "lr_biases": 0.0, "loss": 418.16925048828125, "time": 54}
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+{"epoch": 0, "step": 0, "lr_weights": 0.0, "lr_biases": 0.0, "loss": 502.9640808105469, "time": 21}
+{"epoch": 0, "step": 100, "lr_weights": 0.00040958427196395656, "lr_biases": 9.830022527134957e-06, "loss": 87.14094543457031, "time": 39}
+{"epoch": 0, "step": 200, "lr_weights": 0.0008191685439279131, "lr_biases": 1.9660045054269914e-05, "loss": 58.02775955200195, "time": 59}
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+{"epoch": 0, "step": 0, "lr_weights": 0.0, "lr_biases": 0.0, "loss": 311.5810852050781, "time": 10}
+{"epoch": 0, "step": 100, "lr_weights": 6.4e-06, "lr_biases": 1.5359999999999997e-07, "loss": 230.69223022460938, "time": 14}
+{"epoch": 0, "step": 200, "lr_weights": 1.28e-05, "lr_biases": 3.0719999999999995e-07, "loss": 166.12249755859375, "time": 18}
+{"epoch": 0, "step": 300, "lr_weights": 1.9200000000000003e-05, "lr_biases": 4.608e-07, "loss": 136.7613525390625, "time": 23}
+{"epoch": 0, "step": 400, "lr_weights": 2.56e-05, "lr_biases": 6.143999999999999e-07, "loss": 119.93630981445312, "time": 27}
+{"epoch": 0, "step": 500, "lr_weights": 3.2000000000000005e-05, "lr_biases": 7.68e-07, "loss": 104.84998321533203, "time": 31}
+{"epoch": 0, "step": 600, "lr_weights": 3.8400000000000005e-05, "lr_biases": 9.216e-07, "loss": 91.72066497802734, "time": 35}
+{"epoch": 0, "step": 700, "lr_weights": 4.4800000000000005e-05, "lr_biases": 1.0751999999999999e-06, "loss": 82.16083526611328, "time": 39}
+{"epoch": 0, "step": 800, "lr_weights": 5.12e-05, "lr_biases": 1.2287999999999998e-06, "loss": 77.0691909790039, "time": 43}
+{"epoch": 0, "step": 900, "lr_weights": 5.7600000000000004e-05, "lr_biases": 1.3823999999999999e-06, "loss": 72.76522827148438, "time": 47}
+{"epoch": 0, "step": 1000, "lr_weights": 6.400000000000001e-05, "lr_biases": 1.536e-06, "loss": 68.56533813476562, "time": 51}
+{"epoch": 0, "step": 1100, "lr_weights": 7.04e-05, "lr_biases": 1.6895999999999999e-06, "loss": 63.875396728515625, "time": 56}
+{"epoch": 0, "step": 1200, "lr_weights": 7.680000000000001e-05, "lr_biases": 1.8432e-06, "loss": 62.2598991394043, "time": 60}
+{"epoch": 0, "step": 1300, "lr_weights": 8.32e-05, "lr_biases": 1.9967999999999997e-06, "loss": 60.54216003417969, "time": 64}
+{"epoch": 0, "step": 1400, "lr_weights": 8.960000000000001e-05, "lr_biases": 2.1503999999999998e-06, "loss": 59.51099395751953, "time": 68}
+{"epoch": 0, "step": 1500, "lr_weights": 9.6e-05, "lr_biases": 2.304e-06, "loss": 58.201995849609375, "time": 72}
+{"epoch": 0, "step": 1600, "lr_weights": 0.0001024, "lr_biases": 2.4575999999999996e-06, "loss": 57.54389953613281, "time": 76}
+{"epoch": 0, "step": 1700, "lr_weights": 0.0001088, "lr_biases": 2.6111999999999997e-06, "loss": 57.73210144042969, "time": 81}
+{"epoch": 0, "step": 1800, "lr_weights": 0.00011520000000000001, "lr_biases": 2.7647999999999998e-06, "loss": 55.53309631347656, "time": 85}
+{"epoch": 0, "step": 1900, "lr_weights": 0.00012160000000000001, "lr_biases": 2.9184e-06, "loss": 54.523006439208984, "time": 89}
+{"epoch": 0, "step": 2000, "lr_weights": 0.00012800000000000002, "lr_biases": 3.072e-06, "loss": 55.60398864746094, "time": 94}
+{"epoch": 0, "step": 2100, "lr_weights": 0.0001344, "lr_biases": 3.2255999999999997e-06, "loss": 54.686492919921875, "time": 97}
+{"epoch": 0, "step": 2200, "lr_weights": 0.0001408, "lr_biases": 3.3791999999999998e-06, "loss": 53.89630126953125, "time": 102}
+{"epoch": 0, "step": 2300, "lr_weights": 0.0001472, "lr_biases": 3.5328e-06, "loss": 54.717735290527344, "time": 106}
+{"epoch": 0, "step": 2400, "lr_weights": 0.00015360000000000002, "lr_biases": 3.6864e-06, "loss": 53.34960174560547, "time": 110}
+{"epoch": 0, "step": 2500, "lr_weights": 0.00016, "lr_biases": 3.84e-06, "loss": 53.49087142944336, "time": 115}
+{"epoch": 0, "step": 2600, "lr_weights": 0.0001664, "lr_biases": 3.993599999999999e-06, "loss": 51.3491096496582, "time": 119}
+{"epoch": 0, "step": 2700, "lr_weights": 0.0001728, "lr_biases": 4.1472e-06, "loss": 55.14924240112305, "time": 123}
+/mounts/Users/cisintern/jabbar/git/barlowtwins/pl_model/barlowtwins.py
+{"epoch": 0, "step": 0, "lr_weights": 0.0, "lr_biases": 0.0, "loss": 279.64703369140625, "time": 10}
+{"epoch": 0, "step": 100, "lr_weights": 6.4e-06, "lr_biases": 1.5359999999999997e-07, "loss": 227.3334197998047, "time": 14}
+{"epoch": 0, "step": 200, "lr_weights": 1.28e-05, "lr_biases": 3.0719999999999995e-07, "loss": 181.4349365234375, "time": 18}
+{"epoch": 0, "step": 300, "lr_weights": 1.9200000000000003e-05, "lr_biases": 4.608e-07, "loss": 154.76309204101562, "time": 22}
+{"epoch": 0, "step": 400, "lr_weights": 2.56e-05, "lr_biases": 6.143999999999999e-07, "loss": 137.60595703125, "time": 27}
+{"epoch": 0, "step": 500, "lr_weights": 3.2000000000000005e-05, "lr_biases": 7.68e-07, "loss": 122.97014617919922, "time": 31}
+{"epoch": 0, "step": 600, "lr_weights": 3.8400000000000005e-05, "lr_biases": 9.216e-07, "loss": 114.25325012207031, "time": 35}
+{"epoch": 0, "step": 700, "lr_weights": 4.4800000000000005e-05, "lr_biases": 1.0751999999999999e-06, "loss": 104.38136291503906, "time": 39}
+{"epoch": 0, "step": 800, "lr_weights": 5.12e-05, "lr_biases": 1.2287999999999998e-06, "loss": 95.8516845703125, "time": 43}
+{"epoch": 0, "step": 900, "lr_weights": 5.7600000000000004e-05, "lr_biases": 1.3823999999999999e-06, "loss": 88.72205352783203, "time": 47}
+{"epoch": 0, "step": 1000, "lr_weights": 6.400000000000001e-05, "lr_biases": 1.536e-06, "loss": 84.25239562988281, "time": 51}
+{"epoch": 0, "step": 1100, "lr_weights": 7.04e-05, "lr_biases": 1.6895999999999999e-06, "loss": 80.20368957519531, "time": 56}
+{"epoch": 0, "step": 1200, "lr_weights": 7.680000000000001e-05, "lr_biases": 1.8432e-06, "loss": 74.4749755859375, "time": 60}
+{"epoch": 0, "step": 1300, "lr_weights": 8.32e-05, "lr_biases": 1.9967999999999997e-06, "loss": 69.43824005126953, "time": 64}
+{"epoch": 0, "step": 1400, "lr_weights": 8.960000000000001e-05, "lr_biases": 2.1503999999999998e-06, "loss": 67.08946228027344, "time": 68}
+{"epoch": 0, "step": 1500, "lr_weights": 9.6e-05, "lr_biases": 2.304e-06, "loss": 63.87775421142578, "time": 72}
+{"epoch": 0, "step": 1600, "lr_weights": 0.0001024, "lr_biases": 2.4575999999999996e-06, "loss": 62.846073150634766, "time": 76}
+{"epoch": 0, "step": 1700, "lr_weights": 0.0001088, "lr_biases": 2.6111999999999997e-06, "loss": 59.99956512451172, "time": 81}
+{"epoch": 0, "step": 1800, "lr_weights": 0.00011520000000000001, "lr_biases": 2.7647999999999998e-06, "loss": 59.171791076660156, "time": 85}
+{"epoch": 0, "step": 1900, "lr_weights": 0.00012160000000000001, "lr_biases": 2.9184e-06, "loss": 57.752201080322266, "time": 89}
+{"epoch": 0, "step": 2000, "lr_weights": 0.00012800000000000002, "lr_biases": 3.072e-06, "loss": 56.356109619140625, "time": 93}
+{"epoch": 0, "step": 2100, "lr_weights": 0.0001344, "lr_biases": 3.2255999999999997e-06, "loss": 55.69221496582031, "time": 97}
+{"epoch": 0, "step": 2200, "lr_weights": 0.0001408, "lr_biases": 3.3791999999999998e-06, "loss": 54.519317626953125, "time": 102}
+{"epoch": 0, "step": 2300, "lr_weights": 0.0001472, "lr_biases": 3.5328e-06, "loss": 54.57566833496094, "time": 106}
+{"epoch": 0, "step": 2400, "lr_weights": 0.00015360000000000002, "lr_biases": 3.6864e-06, "loss": 53.92762756347656, "time": 110}
+{"epoch": 0, "step": 2500, "lr_weights": 0.00016, "lr_biases": 3.84e-06, "loss": 53.86446762084961, "time": 115}
+{"epoch": 0, "step": 2600, "lr_weights": 0.0001664, "lr_biases": 3.993599999999999e-06, "loss": 53.880943298339844, "time": 119}
+{"epoch": 0, "step": 2700, "lr_weights": 0.0001728, "lr_biases": 4.1472e-06, "loss": 53.56993103027344, "time": 124}
