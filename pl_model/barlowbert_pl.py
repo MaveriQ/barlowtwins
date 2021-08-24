@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from datetime import timedelta
 
 import pytorch_lightning as pl
-from barlowbert_models import BarlowBert, off_diagonal, LARS, adjust_learning_rate
+from barlowbert_models import BarlowBert, off_diagonal, LARS, LARS2, adjust_learning_rate, exclude_bias_and_norm
 from barlowbert_dm import BookCorpusDataModuleForMLM
 
 bert_small = {
@@ -46,13 +46,17 @@ class LitBarlowBert(pl.LightningModule):
         c = (output1.transpose(0,1) @ output2)
         # c.div_(self.args.batch_size)
 
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-        off_diag = off_diagonal(c).pow_(2).sum()
+        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum().mul(self.args.scale_loss)
+        off_diag = off_diagonal(c).pow_(2).sum().mul(self.args.scale_loss)
         loss = on_diag + self.args.lambd * off_diag   
-
+        # pdb.set_trace()
         self.log("train_loss", loss)
         self.log("on_diag", on_diag)
         self.log("off_diag", off_diag)
+
+        tensorboard = self.logger.experiment[0]
+        if self.global_step % 500==0:
+            tensorboard.add_image('correlation_matrix',c,global_step=self.global_step,dataformats='HW')
         
         return loss
 
@@ -66,9 +70,12 @@ class LitBarlowBert(pl.LightningModule):
                 param_weights.append(param)
 
         parameters = [{'params': param_weights}, {'params': param_biases}]
-        # optimizer = LARS(parameters, lr=0, weight_decay=self.args.weight_decay,
+        # optimizer = LARS2(parameters, lr=0, weight_decay=self.args.weight_decay,
         #              weight_decay_filter=True,
         #              lars_adaptation_filter=True)
+        optimizer = LARS(model.parameters(), lr=0, weight_decay=args.weight_decay,
+                     weight_decay_filter=exclude_bias_and_norm,
+                     lars_adaptation_filter=exclude_bias_and_norm)
 
         return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
 
@@ -95,7 +102,7 @@ def args_parse():
     parser = ArgumentParser(description='Barlow Twins Training')
     parser.add_argument('--exp_name', 
                         type=str,
-                        default='bert_small')
+                        default='bert')
     parser.add_argument('--tags', 
                         nargs='*',
                         type=str,
@@ -106,6 +113,8 @@ def args_parse():
     parser.add_argument('--lr', 
                         default=0.0001, type=float, metavar='LR',
                         help='base learning rate for weights')
+    parser.add_argument('--scale-loss', default=1 / 32, type=float,
+                    metavar='S', help='scale the loss')
     # parser.add_argument('--learning-rate-weights', default=0.2, type=float, metavar='LR',
     #                     help='base learning rate for weights')
     # parser.add_argument('--learning-rate-biases', default=0.0048, type=float, metavar='LR',
@@ -156,8 +165,8 @@ if __name__=='__main__':
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),
                                     # filename='_'.join(args.tags),
-                                    every_n_train_steps=4000,
-                                    save_last=-1,
+                                    every_n_train_steps=1000,
+                                    save_top_k=-1,
                                     # train_time_interval=timedelta(hours=4)
                                     )
 
