@@ -111,7 +111,8 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased', padding=True,truncation=True)
         self.collator = DataCollatorForBarlowBertWithMLM(self.tokenizer,mlm_probability=self.args.mlm_probability)
 
-        self.dataset = load_from_disk(self.args.datadir/'bookcorpus_20mil_128')
+        print(f'loading {args.dataset_size} dataset..')
+        self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset_size}_128')
         self.num_rows = self.dataset.num_rows # 74,004,228
 
     def setup(self, stage: Optional[str] = None):
@@ -136,5 +137,9 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         parser.add_argument('--datadir', type=Path, metavar='DIR', default='/mounts/data/proj/jabbar/barlowbert/',
                         help='path to dataset') 
         parser.add_argument('--batch_size', type=int, default=128)
-        parser.add_argument('--mlm_probability', type=float, default=0.2)            
+        parser.add_argument('--dataset_size', type=str, default='20mil')
+        parser.add_argument('--mlm_probability', type=float, default=0.0)
+        parser.add_argument('--workers', 
+                        default=4, type=int, metavar='N',
+                        help='number of data loader workers')            
         return parser

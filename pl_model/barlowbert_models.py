@@ -57,6 +57,7 @@ class Pooler(torch.nn.Module):
                  pooling_mode_max_tokens: bool = False,
                  pooling_mode_mean_tokens: bool = True,
                  pooling_mode_mean_sqrt_len_tokens: bool = False,
+                 mean_cat: str = 'cat'
                  ):
         super(Pooler, self).__init__()
 
@@ -74,9 +75,13 @@ class Pooler(torch.nn.Module):
         self.pooling_mode_mean_tokens = pooling_mode_mean_tokens
         self.pooling_mode_max_tokens = pooling_mode_max_tokens
         self.pooling_mode_mean_sqrt_len_tokens = pooling_mode_mean_sqrt_len_tokens
+        self.pool_method = mean_cat
 
         pooling_mode_multiplier = sum([pooling_mode_cls_token, pooling_mode_max_tokens, pooling_mode_mean_tokens, pooling_mode_mean_sqrt_len_tokens])
-        self.pooling_output_dimension = (pooling_mode_multiplier * word_embedding_dimension)
+        if self.pool_method=='cat':
+            self.pooling_output_dimension = (pooling_mode_multiplier * word_embedding_dimension)
+        elif self.pool_method=='mean':
+            self.pooling_output_dimension = word_embedding_dimension
 
 
     def __repr__(self):
@@ -116,10 +121,6 @@ class Pooler(torch.nn.Module):
             input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
             sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
 
-            #If tokens are weighted (by WordWeights layer), feature 'token_weights_sum' will be present
-#             if 'token_weights_sum' in features:
-#                 sum_mask = features['token_weights_sum'].unsqueeze(-1).expand(sum_embeddings.size())
-#             else:
             sum_mask = input_mask_expanded.sum(1)
 
             sum_mask = torch.clamp(sum_mask, min=1e-9)
@@ -129,7 +130,11 @@ class Pooler(torch.nn.Module):
             if self.pooling_mode_mean_sqrt_len_tokens:
                 output_vectors.append(sum_embeddings / torch.sqrt(sum_mask))
 
-        output_vector = torch.cat(output_vectors, 1)
+            if self.pool_method=='cat':
+                output_vector = torch.cat(output_vectors, 1)
+            elif self.pool_method=='mean':
+                output_vector = torch.stack(output_vectors,dim=2).mean(dim=2)
+            # pdb.set_trace()
 #         features.update({'sentence_embedding': output_vector})
         return output_vector
 
@@ -155,19 +160,20 @@ class BarlowBert(BertPreTrainedModel):
     def _init_weights(self, module):
         """Initialize the weights"""
 #         pdb.set_trace()
-        if isinstance(module, nn.Linear):
-            # Slightly different from the TF version which uses truncated_normal for initialization
-            # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.bias is not None:
+        if isinstance(module,Pooler) or isinstance(module,Projector): # init weights only for non Bert modules as we are using pretrained weights for rest.
+            if isinstance(module, nn.Linear):
+                # Slightly different from the TF version which uses truncated_normal for initialization
+                # cf https://github.com/pytorch/pytorch/pull/5617
+                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            elif isinstance(module, nn.Embedding):
+                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+                if module.padding_idx is not None:
+                    module.weight.data[module.padding_idx].zero_()
+            elif isinstance(module, nn.LayerNorm):
                 module.bias.data.zero_()
-        elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.padding_idx is not None:
-                module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
+                module.weight.data.fill_(1.0)
             
     def __init__(self, config):
         super().__init__(config)
@@ -177,7 +183,8 @@ class BarlowBert(BertPreTrainedModel):
         self.pooler = Pooler(word_embedding_dimension=config.hidden_size,
                             pooling_mode_cls_token=config.cls_pooling,
                             pooling_mode_max_tokens=config.max_pooling,
-                            pooling_mode_mean_tokens=config.mean_pooling)
+                            pooling_mode_mean_tokens=config.mean_pooling,
+                            mean_cat=config.pool_type)
 
         sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, config.projector.split('-')))
         layers = []

@@ -10,7 +10,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "env": {"TORCH_DISTRIBUTED_DEBUG":"DETAIL"}
+            "env": {"TORCH_DISTRIBUTED_DEBUG":"DETAIL",
+                    "CUDA_VISIBLE_DEVICES":"2"}
         }
     ]
 }

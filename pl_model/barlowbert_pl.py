@@ -1,8 +1,11 @@
-from pathlib import Path
+import pdb
 from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.callbacks import ModelCheckpoint
 from transformers import CONFIG_MAPPING, BertTokenizer
 import torch
 from argparse import ArgumentParser
+from datetime import timedelta
+
 import pytorch_lightning as pl
 from barlowbert_models import BarlowBert, off_diagonal, LARS, adjust_learning_rate
 from barlowbert_dm import BookCorpusDataModuleForMLM
@@ -30,13 +33,13 @@ class LitBarlowBert(pl.LightningModule):
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
-        out = self.model(x)
+        out = self.model(**x)
         return out
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop. It is independent of forward
         y1, y2 = batch
-
+        # pdb.set_trace()
         output1 = self.model(**y1)
         output2 = self.model(**y2)
 
@@ -72,12 +75,20 @@ class LitBarlowBert(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False) 
-        parser.add_argument('--lambd', type=float, default=0.005)
+        parser.add_argument('--lambd', type=float, default=0.0005)
         parser.add_argument('--max_pooling', type=bool, default=True)
         parser.add_argument('--mean_pooling', type=bool, default=True)
         parser.add_argument('--cls_pooling', type=bool, default=True)
-        parser.add_argument('--projector', default='128-128', type=str,
-                        metavar='MLP', help='projector MLP')               
+        parser.add_argument('--projector', default='768-256-256', type=str,
+                        metavar='MLP', help='projector MLP')
+        parser.add_argument('--pool_type', type=str,
+                        default='cat')
+        parser.add_argument('--hidden_dropout_prob', 
+                        default=0.1, type=float,
+                        help='dropout for hidden layers')
+        parser.add_argument('--attention_probs_dropout_prob', 
+                        default=0.1, type=float,
+                        help='dropout for attention layers')               
         return parser
 
 def args_parse():
@@ -92,14 +103,8 @@ def args_parse():
     parser.add_argument('--seed',
                         type=int,
                         default=42)
-    parser.add_argument('--workers', 
-                        default=32, type=int, metavar='N',
-                        help='number of data loader workers')
-    parser.add_argument('--epochs', 
-                        default=5, type=int, metavar='N',
-                        help='number of total epochs to run')
     parser.add_argument('--lr', 
-                        default=0.02, type=float, metavar='LR',
+                        default=0.0001, type=float, metavar='LR',
                         help='base learning rate for weights')
     # parser.add_argument('--learning-rate-weights', default=0.2, type=float, metavar='LR',
     #                     help='base learning rate for weights')
@@ -108,21 +113,17 @@ def args_parse():
     parser.add_argument('--weight-decay', 
                         default=1e-6, type=float, metavar='W',
                         help='weight decay')
-    parser.add_argument('--print-freq', 
-                        default=100, type=int, metavar='N',
-                        help='print frequency')
-    parser.add_argument('--checkpoint-dir', 
-                        default='./checkpoint/', type=Path,
-                        metavar='DIR', help='path to checkpoint directory')
 
     parser = LitBarlowBert.add_model_specific_args(parser)
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run False --gpus 2 --batch_size 128 --lr 0.01 --accelerator ddp --benchmark True'.split()    
+    tmp_args = '--fast_dev_run True --exp_name bert_small --gpus 1 --dataset_size 20mil --batch_size 128 --lr 0.01 --accelerator ddp --benchmark True'.split()    
     args = parser.parse_args()
 
     args.tags.insert(0, args.exp_name)
+    args.accelerator = 'ddp'
+    args.benchmark = True
 
     return args
 
@@ -130,12 +131,19 @@ if __name__=='__main__':
 
     args = args_parse()
     pl.seed_everything(args.seed)
-    config = CONFIG_MAPPING['bert']()
-    config.update(bert_small)
+
+    if args.exp_name=='bert_small':
+        config = CONFIG_MAPPING['bert'].from_pretrained('prajjwal1/bert-small')
+    else:
+        config = CONFIG_MAPPING['bert'].from_pretrained('bert-base-uncased')
+
     config.projector=args.projector
     config.max_pooling=args.max_pooling
     config.mean_pooling=args.mean_pooling
     config.cls_pooling=args.cls_pooling
+    config.pool_type=args.pool_type
+    config.attention_probs_dropout_prob = args.attention_probs_dropout_prob
+    config.hidden_dropout_prob = args.hidden_dropout_prob
 
     model = LitBarlowBert(args,config)
     dm = BookCorpusDataModuleForMLM(args)
@@ -146,9 +154,17 @@ if __name__=='__main__':
                                     name='lightning_tb_logs'
                                     )
 
+    ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),
+                                    # filename='_'.join(args.tags),
+                                    every_n_train_steps=4000,
+                                    save_last=-1,
+                                    # train_time_interval=timedelta(hours=4)
+                                    )
+
     trainer = pl.Trainer.from_argparse_args(args,
                                             plugins=pl.plugins.DDPPlugin(find_unused_parameters=False),
                                             logger=[tb_logger],
+                                            callbacks=[ckpt_callback]
                                             )
 
     trainer.fit(model, dm)
