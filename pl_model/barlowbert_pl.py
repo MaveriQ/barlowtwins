@@ -1,13 +1,13 @@
 import pdb
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from transformers import CONFIG_MAPPING, BertTokenizer
+from transformers import CONFIG_MAPPING
 import torch
 from argparse import ArgumentParser
-from datetime import timedelta
+from pl_bolts.optimizers import LARS
 
 import pytorch_lightning as pl
-from barlowbert_models import BarlowBert, off_diagonal, LARS, LARS2, adjust_learning_rate, exclude_bias_and_norm
+from barlowbert_models import BarlowBert
 from barlowbert_dm import BookCorpusDataModuleForMLM
 
 bert_small = {
@@ -17,48 +17,45 @@ bert_small = {
     "intermediate_size" : int(512*4)
 }
 
-bert_tiny = {
-    "hidden_size" : 128 ,
-    "num_hidden_layers" : 2,
-    "num_attention_heads": int(128/64),
-    "intermediate_size" : int(128*4)
-}
-
 class LitBarlowBert(pl.LightningModule):
     def __init__(self, args,config):
         super().__init__()
         self.save_hyperparameters()
         self.args = args
-        self.model = BarlowBert(config)
+        self.config = config
+        self.model = BarlowBert(self.config,self.args)
+        # self.loss_fct = torch.nn.CrossEntropyLoss()
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
-        out = self.model(**x)
-        return out
-
+        output = self.model.model(**x)
+        return output['projection']
+        
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop. It is independent of forward
-        y1, y2 = batch
+
+        loss_dict = self.model(batch)
+
+        if self.args.do_mlm:
+            self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
+
+        if self.args.do_sim:
+            self.log("sim_loss",loss_dict['sim_loss'])
+            self.log("sim_ondiag",loss_dict['sim_ondiag'])
+            self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+
         # pdb.set_trace()
-        output1 = self.model(**y1)
-        output2 = self.model(**y2)
+        self.log("train_loss", loss_dict['loss'])
+        self.log("corr_loss",loss_dict['corr_loss'])
+        self.log("corr_ondiag",loss_dict['corr_ondiag'])
+        self.log("corr_offdiag",loss_dict['corr_offdiag'])        
 
-        c = (output1.transpose(0,1) @ output2)
-        # c.div_(self.args.batch_size)
-
-        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum().mul(self.args.scale_loss)
-        off_diag = off_diagonal(c).pow_(2).sum().mul(self.args.scale_loss)
-        loss = on_diag + self.args.lambd * off_diag   
-        # pdb.set_trace()
-        self.log("train_loss", loss)
-        self.log("on_diag", on_diag)
-        self.log("off_diag", off_diag)
-
-        tensorboard = self.logger.experiment[0]
-        if self.global_step % 500==0:
-            tensorboard.add_image('correlation_matrix',c,global_step=self.global_step,dataformats='HW')
+        # tensorboard = self.logger.experiment[0]
+        # if self.global_step % 500 == 0:
+        #     tensorboard.add_image('correlation_matrix',c_out,global_step=self.global_step,dataformats='HW')
+        #     tensorboard.add_image('similarity_matrix',c_in,global_step=self.global_step,dataformats='HW')
         
-        return loss
+        return loss_dict['loss']
 
     def configure_optimizers(self):
         param_weights = []
@@ -69,23 +66,31 @@ class LitBarlowBert(pl.LightningModule):
             else:
                 param_weights.append(param)
 
-        parameters = [{'params': param_weights}, {'params': param_biases}]
-        # optimizer = LARS2(parameters, lr=0, weight_decay=self.args.weight_decay,
-        #              weight_decay_filter=True,
-        #              lars_adaptation_filter=True)
-        optimizer = LARS(model.parameters(), lr=0, weight_decay=args.weight_decay,
-                     weight_decay_filter=exclude_bias_and_norm,
-                     lars_adaptation_filter=exclude_bias_and_norm)
+        # parameters = [{'params': param_weights}, {'params': param_biases}]
+        # # optimizer = LARS2(parameters, lr=0, weight_decay=self.args.weight_decay,
+        # #              weight_decay_filter=True,
+        # #              lars_adaptation_filter=True)
+        # optimizer = LARS(model.parameters(), lr=0, weight_decay=args.weight_decay,
+        #              weight_decay_filter=exclude_bias_and_norm,
+        #              lars_adaptation_filter=exclude_bias_and_norm)
 
-        return torch.optim.AdamW(self.parameters(), lr=self.args.lr)
+        if self.args.dont_use_lars:
+            return torch.optim.AdamW(self.parameters(), lr=self.args.lr)            
+        else:
+            return LARS(self.parameters(), lr=self.args.lr)
 
     @staticmethod
     def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False) 
-        parser.add_argument('--lambd', type=float, default=0.0005)
-        parser.add_argument('--max_pooling', type=bool, default=True)
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument('--all_hidden_states', action='store_true')
+        parser.add_argument('--do_mlm', action='store_true')
+        parser.add_argument('--do_sim', action='store_true')
+        parser.add_argument('--dont_use_lars', action='store_true')
+        parser.add_argument('--mlm_weight', type=float, default=0.1)
+        parser.add_argument('--bert_pooler', type=bool, default=False)
+        parser.add_argument('--max_pooling', type=bool, default=False)
         parser.add_argument('--mean_pooling', type=bool, default=True)
-        parser.add_argument('--cls_pooling', type=bool, default=True)
+        parser.add_argument('--cls_pooling', type=bool, default=False)
         parser.add_argument('--projector', default='768-256-256', type=str,
                         metavar='MLP', help='projector MLP')
         parser.add_argument('--pool_type', type=str,
@@ -95,7 +100,10 @@ class LitBarlowBert(pl.LightningModule):
                         help='dropout for hidden layers')
         parser.add_argument('--attention_probs_dropout_prob', 
                         default=0.1, type=float,
-                        help='dropout for attention layers')               
+                        help='dropout for attention layers')
+        parser.add_argument('--lambda_corr', type=float, default=0.001)
+        parser.add_argument('--lambda_sim', type=float, default=1.0)
+        parser.add_argument('--sim_weight', type=float, default=0.001)               
         return parser
 
 def args_parse():
@@ -111,14 +119,8 @@ def args_parse():
                         type=int,
                         default=42)
     parser.add_argument('--lr', 
-                        default=0.0001, type=float, metavar='LR',
+                        default=0.001, type=float, metavar='LR',
                         help='base learning rate for weights')
-    parser.add_argument('--scale-loss', default=1 / 32, type=float,
-                    metavar='S', help='scale the loss')
-    # parser.add_argument('--learning-rate-weights', default=0.2, type=float, metavar='LR',
-    #                     help='base learning rate for weights')
-    # parser.add_argument('--learning-rate-biases', default=0.0048, type=float, metavar='LR',
-    #                     help='base learning rate for biases and batch norm parameters')
     parser.add_argument('--weight-decay', 
                         default=1e-6, type=float, metavar='W',
                         help='weight decay')
@@ -127,7 +129,8 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert_small --gpus 1 --dataset_size 20mil --batch_size 128 --lr 0.01 --accelerator ddp --benchmark True'.split()    
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 512 --all_hidden_states'.split()
+    t_args = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
     args = parser.parse_args()
 
     args.tags.insert(0, args.exp_name)
@@ -145,13 +148,11 @@ if __name__=='__main__':
         config = CONFIG_MAPPING['bert'].from_pretrained('prajjwal1/bert-small')
     else:
         config = CONFIG_MAPPING['bert'].from_pretrained('bert-base-uncased')
+    
+    if args.all_hidden_states:
+        config.output_hidden_states=True
 
-    config.projector=args.projector
-    config.max_pooling=args.max_pooling
-    config.mean_pooling=args.mean_pooling
-    config.cls_pooling=args.cls_pooling
-    config.pool_type=args.pool_type
-    config.attention_probs_dropout_prob = args.attention_probs_dropout_prob
+    # config.attention_probs_dropout_prob = args.attention_probs_dropout_prob
     config.hidden_dropout_prob = args.hidden_dropout_prob
 
     model = LitBarlowBert(args,config)
@@ -160,7 +161,7 @@ if __name__=='__main__':
     tb_logger = TensorBoardLogger(
                                     save_dir=args.datadir,
                                     version='_'.join(args.tags),
-                                    name='lightning_tb_logs'
+                                    name='lightning_tb_logs',
                                     )
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),

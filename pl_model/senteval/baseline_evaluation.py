@@ -1,8 +1,9 @@
 import logging
 import sys
+
+from transformers import BertModel, CONFIG_MAPPING, BertTokenizerFast
 sys.path.insert(0, '..')
-from barlowbert_pl import LitBarlowBert
-from transformers import BertTokenizerFast
+from barlowbert_models import Pooler
 from tqdm import tqdm
 from pathlib import Path
 from argparse import ArgumentParser
@@ -12,7 +13,6 @@ import torch
 import pdb
 import json
 from prettytable import PrettyTable
-import pandas as pd
 
 list_of_tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16',
                     'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'SST5', 'TREC', 'MRPC',
@@ -26,23 +26,67 @@ PATH_TO_SENTEVAL = '/mounts/Users/cisintern/jabbar/git/SimCSE/SentEval'
 sys.path.insert(0, PATH_TO_SENTEVAL)
 import senteval
 
+
+class PooledBert(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+
+        self.bert = BertModel(config, add_pooling_layer=False)
+
+        self.pooler = Pooler(word_embedding_dimension=config.hidden_size,
+                            pooling_mode_cls_token=True,
+                            pooling_mode_max_tokens=True,
+                            pooling_mode_mean_tokens=True,
+                            mean_cat='mean')
+    
+    def forward(
+        self,
+        input_ids=None,
+        attention_mask=None,
+        token_type_ids=None,
+        position_ids=None,
+        head_mask=None,
+        inputs_embeds=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
+        labels=None,
+        output_attentions=None,
+        output_hidden_states=None,
+        return_dict=None,
+    ):
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        pooled = self.pooler(outputs,attention_mask)
+
+        return pooled
+
+
 def args_parse():
     parser = ArgumentParser(description='Barlow Twins Evaluation')
-
-    parser.add_argument('--checkpoint_dir', 
-                        type=Path,
-                        required=True,
-                        default='')    
+    
     parser.add_argument('--checkpoint', 
                         type=str,
-                        required=False,
+                        # required=True,
                         default='')
     parser.add_argument('--result_filename', 
                         type=str,
                         default='_results')
     parser.add_argument("--task_set", type=str, 
-            choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts_dev',
+            choices=['sts', 'transfer', 'full', 'na'],
+            default='sts',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],
@@ -56,7 +100,6 @@ def args_parse():
                                  'SICKRelatedness', 'STSBenchmark'],
                         choices=list_of_tasks)
 
-    tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_frozen_bs1024_dropout0.1_lr1e-3_lambd1e-3_mlm0_gpus4_mean_all_fp16".split()
     args = parser.parse_args()
     return args
 
@@ -83,11 +126,11 @@ def batcher(params, batch):
     
     for k in tokens:
             tokens[k] = tokens[k].to(params.device)
-    
+    # pdb.set_trace()
     with torch.no_grad():
-        embedding = params.model(tokens)
-
-    return embedding.detach().cpu().numpy()
+        pooled = params.model(**tokens)
+        
+    return pooled.detach().cpu().numpy()
 
 def list_to_dict(listofdicts):
     nd={}
@@ -99,12 +142,6 @@ def list_to_dict(listofdicts):
                 nd[k]=[v]
     return nd
 
-def add_pool_type(args):
-    data = torch.load(args.checkpoint)
-    
-    data['hyper_parameters']['config'].pool_type='cat'
-    torch.save(data,args.checkpoint)
-
 def print_table(task_names, scores):
     tb = PrettyTable()
     tb.field_names = task_names
@@ -112,14 +149,10 @@ def print_table(task_names, scores):
     print(tb)
     
 def main(args):
-    
-    # add_pool_type(args)
 
     # Set up the tasks
     if args.task_set == 'sts':
         args.tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']
-    if args.task_set == 'sts_dev':
-        args.tasks = ['STSBenchmark', 'SICKRelatedness']
     elif args.task_set == 'transfer':
         args.tasks = ['MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC']
     elif args.task_set == 'full':
@@ -140,8 +173,9 @@ def main(args):
     else:
         raise NotImplementedError
         
+    config = CONFIG_MAPPING['bert'].from_pretrained('bert-base-uncased')
     params['tokenizer'] = BertTokenizerFast.from_pretrained('bert-base-uncased', padding=True,truncation=True,)
-    params['model'] = LitBarlowBert.load_from_checkpoint(args.checkpoint)
+    params['model'] = PooledBert(config=config)
     params['device'] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     params['model'] = params['model'].to(params['device'])
 
@@ -170,10 +204,10 @@ def main(args):
                 scores.append("%.2f" % (results[task]['dev']['spearman'][0] * 100))
             else:
                 scores.append("0.00")
-        # print_table(task_names, scores)
+        print_table(task_names, scores)
 
-        # task_names = []
-        # scores = []
+        task_names = []
+        scores = []
         for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
             task_names.append(task)
             if task in results:
@@ -194,17 +228,17 @@ def main(args):
             task_names.append(task)
             if task in results:
                 if task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']:
-                    scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100)) 
+                    scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100)) # changed from 'all' to 'mean'
                 else:
-                    scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100)) 
+                    scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100)) # removed 
             else:
                 scores.append("0.00")
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        # print_table(task_names, scores)
+        print_table(task_names, scores)
 
-        # task_names = []
-        # scores = []
+        task_names = []
+        scores = []
         for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
             task_names.append(task)
             if task in results:
@@ -214,52 +248,17 @@ def main(args):
         task_names.append("Avg.")
         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
-    
-    return (task_names, scores)
-
         
-    # args.result_filename = args.checkpoint + args.result_filename + '.pkl'
-    # i=0
-    # while os.path.exists(args.result_filename):
-    #     i+=1
-    #     args.result_filename = args.result_filename + f'_{i}.pkl'
+    args.result_filename = args.checkpoint + args.result_filename + '.pkl'
+    i=0
+    while os.path.exists(args.result_filename):
+        i+=1
+        args.result_filename = args.result_filename + f'_{i}.pkl'
 
-    # with open(args.result_filename,'w') as file:
-    #     json.dump(results,file,indent=4)
+    with open(args.result_filename,'w') as file:
+        json.dump(results,file,indent=4)
 
 if __name__=='__main__':
     logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.DEBUG)
     args = args_parse()
-
-    all_checkpoints = list(Path(args.checkpoint_dir).glob('*.ckpt'))
-
-    filename = args.checkpoint_dir.name+'.csv'
-    if os.path.exists(filename):
-        all_results = pd.read_csv(filename)
-    else:
-        all_results = pd.DataFrame()
-
-    if len(all_checkpoints)==0:
-        print(f'No checkpoints found at {args.checkpoint_dir}')
-        sys.exit(1)
-    else:
-        print(f'Processing {len(all_checkpoints)} checkpoints...')
-    # pdb.set_trace()
-    for ckpt in all_checkpoints:
-        epoch,step=ckpt.stem.split('-')
-        epoch = epoch.split('=')[1]
-        step = step.split('=')[1]
-        if len(all_results)>0: # loaded some results
-            if (int(epoch) in all_results['epoch'].values) & (int(step) in all_results['step'].values):
-                print(f'Skipping epoch {epoch}, step {step}.')
-                continue
-        args.checkpoint = str(ckpt)
-        task_names, scores = main(args)
-
-        result_row = dict(zip(task_names,scores))
-        result_row['epoch']=epoch
-        result_row['step']=step
-        all_results = all_results.append(result_row,ignore_index=True)
-
-    all_results.to_csv(filename)
-        
+    main(args)
