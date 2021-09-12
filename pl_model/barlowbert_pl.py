@@ -1,14 +1,15 @@
+from collections import namedtuple
 import pdb
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from transformers import CONFIG_MAPPING
+from transformers import CONFIG_MAPPING, BertTokenizerFast
 import torch
 from argparse import ArgumentParser
 from pl_bolts.optimizers import LARS
 
 import pytorch_lightning as pl
 from barlowbert_models import BarlowBert
-from barlowbert_dm import BookCorpusDataModuleForMLM
+from barlowbert_dm import BookCorpusDataModuleForMLM, DataCollatorForBarlowBertWithMLM
 
 bert_small = {
     "hidden_size" : 512 ,
@@ -87,6 +88,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--do_sim', action='store_true')
         parser.add_argument('--dont_use_lars', action='store_true')
         parser.add_argument('--mlm_weight', type=float, default=0.1)
+        parser.add_argument('--num_mixer_layers', type=int, default=6)
         parser.add_argument('--bert_pooler', type=bool, default=False)
         parser.add_argument('--max_pooling', type=bool, default=False)
         parser.add_argument('--mean_pooling', type=bool, default=True)
@@ -129,8 +131,8 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 512 --all_hidden_states'.split()
-    t_args = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 32 --all_hidden_states'.split()
+    tmp_args_2 = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
     args = parser.parse_args()
 
     args.tags.insert(0, args.exp_name)
@@ -139,7 +141,7 @@ def args_parse():
 
     return args
 
-if __name__=='__main__':
+def main():
 
     args = args_parse()
     pl.seed_everything(args.seed)
@@ -152,6 +154,7 @@ if __name__=='__main__':
     if args.all_hidden_states:
         config.output_hidden_states=True
 
+    config.max_position_embeddings=128 #because of the preprocessed dataset
     # config.attention_probs_dropout_prob = args.attention_probs_dropout_prob
     config.hidden_dropout_prob = args.hidden_dropout_prob
 
@@ -166,7 +169,7 @@ if __name__=='__main__':
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),
                                     # filename='_'.join(args.tags),
-                                    every_n_train_steps=1000,
+                                    every_n_train_steps=10000,
                                     save_top_k=-1,
                                     # train_time_interval=timedelta(hours=4)
                                     )
@@ -178,3 +181,6 @@ if __name__=='__main__':
                                             )
 
     trainer.fit(model, dm)
+
+if __name__=='__main__':
+    main()

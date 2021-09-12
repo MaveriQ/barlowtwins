@@ -10,6 +10,7 @@ from copy import deepcopy
 from argparse import ArgumentParser
 from pathlib import Path
 import pdb
+import sys
 @dataclass
 class DataCollatorForBarlowBertWithMLMold:
     """
@@ -133,6 +134,7 @@ class DataCollatorForBarlowBertWithMLM:
     mlm: bool = True
     mlm_probability: float = 0.15
     pad_to_multiple_of: Optional[int] = None
+    do_mlm: Optional[bool] = False
 
     def __post_init__(self):
         if self.mlm and self.tokenizer.mask_token is None:
@@ -151,15 +153,17 @@ class DataCollatorForBarlowBertWithMLM:
                                         pad_to_multiple_of=self.pad_to_multiple_of)
         else:
             print('Error. This collator only works with dicts or BatchEncoded inputs')
+            sys.exit(1)
         
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
         batch_1 = deepcopy(batch)
         batches = []
 
-        batch["mlm_input_ids"],batch["mlm_labels"] = self.mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
+        if self.do_mlm:
+            batch["mlm_input_ids"],batch["mlm_labels"] = self.mask_tokens(batch["input_ids"], special_tokens_mask=special_tokens_mask)
+            batch_1["mlm_input_ids"],batch_1["mlm_labels"] = self.mask_tokens(batch_1["input_ids"], special_tokens_mask=special_tokens_mask)
         batches.append(batch)
-        batch_1["mlm_input_ids"],batch_1["mlm_labels"] = self.mask_tokens(batch_1["input_ids"], special_tokens_mask=special_tokens_mask)
         batches.append(batch_1)
         
         # batches.append({'masked_indices': masked_indices_1 | masked_indices_2})
@@ -203,6 +207,7 @@ class DataCollatorForBarlowBertWithMLM:
 
         #  # The rest of the time (10% of the time) we keep the masked input tokens unchanged
         return inputs, labels
+
 class BookCorpusDataModuleForMLM(pl.LightningDataModule):
     def __init__(self, args):
         super().__init__()
@@ -239,6 +244,6 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         parser.add_argument('--dataset', type=str, default='20mil')
         parser.add_argument('--mlm_probability', type=float, default=0.2)
         parser.add_argument('--workers', 
-                        default=2, type=int, metavar='N',
+                        default=4, type=int, metavar='N',
                         help='number of data loader workers')            
         return parser
