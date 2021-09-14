@@ -25,12 +25,11 @@ class LitBarlowBert(pl.LightningModule):
         self.args = args
         self.config = config
         self.model = BarlowBert(self.config,self.args)
-        # self.loss_fct = torch.nn.CrossEntropyLoss()
 
     def forward(self, x):
         # in lightning, forward defines the prediction/inference actions
         output = self.model.model(**x)
-        return output['projection']
+        return output['sentence_embedding']
         
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop. It is independent of forward
@@ -49,7 +48,8 @@ class LitBarlowBert(pl.LightningModule):
         self.log("train_loss", loss_dict['loss'])
         self.log("corr_loss",loss_dict['corr_loss'])
         self.log("corr_ondiag",loss_dict['corr_ondiag'])
-        self.log("corr_offdiag",loss_dict['corr_offdiag'])        
+        self.log("corr_offdiag",loss_dict['corr_offdiag'])
+        self.log("lr",self.optimizers().param_groups[0]['lr'])        
 
         # tensorboard = self.logger.experiment[0]
         # if self.global_step % 500 == 0:
@@ -76,9 +76,9 @@ class LitBarlowBert(pl.LightningModule):
         #              lars_adaptation_filter=exclude_bias_and_norm)
 
         if self.args.dont_use_lars:
-            return torch.optim.AdamW(self.parameters(), lr=self.args.lr)            
+            return torch.optim.AdamW(self.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)            
         else:
-            return LARS(self.parameters(), lr=self.args.lr)
+            return LARS(self.parameters(), lr=self.args.lr,weight_decay=self.args.weight_decay)
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -86,6 +86,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--all_hidden_states', action='store_true')
         parser.add_argument('--do_mlm', action='store_true')
         parser.add_argument('--do_sim', action='store_true')
+        parser.add_argument('--dont_use_bert', action='store_true')
         parser.add_argument('--dont_use_lars', action='store_true')
         parser.add_argument('--mlm_weight', type=float, default=0.1)
         parser.add_argument('--num_mixer_layers', type=int, default=6)
@@ -169,7 +170,7 @@ def main():
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),
                                     # filename='_'.join(args.tags),
-                                    every_n_train_steps=10000,
+                                    every_n_train_steps=200,
                                     save_top_k=-1,
                                     # train_time_interval=timedelta(hours=4)
                                     )

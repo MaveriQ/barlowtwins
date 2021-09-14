@@ -42,7 +42,7 @@ def args_parse():
                         default='_results')
     parser.add_argument("--task_set", type=str, 
             choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts_dev',
+            default='sts',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],

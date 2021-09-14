@@ -229,11 +229,11 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
 
-    # def val_dataloader(self):
-    #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
+    def val_dataloader(self):
+        return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
 
-    # def test_dataloader(self):
-    #     return DataLoader(self.corpus_test, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
+    def test_dataloader(self):
+        return DataLoader(self.corpus_test, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
     
     @staticmethod
     def add_model_specific_args(parent_parser):

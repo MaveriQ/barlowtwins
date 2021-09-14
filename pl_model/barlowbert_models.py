@@ -145,11 +145,11 @@ class Pooler(torch.nn.Module):
             print('Error: Either of bert_output or nlpmixer_output must be set')
             sys.exit(1)            
 
-        cls_token = token_embeddings[:,0]
         # pdb.set_trace()
         ## Pooling strategy
         output_vectors = []
         if self.pooling_mode_cls_token:
+            cls_token = token_embeddings[:,0]
             output_vectors.append(cls_token)
         if self.pooling_mode_max_tokens:
             input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
@@ -329,16 +329,21 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
 
         self.config = config
         self.args = args
-            
-        self.bert = BertModel(self.config, add_pooling_layer=False).from_pretrained('bert-base-uncased')
-
-        if self.args.do_mlm:
-            self.lm_head = BertLMPredictionHead(config)           
-            for params in self.bert.pooler.parameters():
-                params.requires_grad=False
+  
+        if self.args.dont_use_bert:
+            self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=True)
         else:
-            for params in self.bert.parameters():
-                params.requires_grad=False            
+            self.bert = BertModel(self.config, add_pooling_layer=False).from_pretrained('bert-base-uncased')
+
+            if self.args.do_mlm:
+                self.lm_head = BertLMPredictionHead(config)           
+                for params in self.bert.pooler.parameters():
+                    params.requires_grad=False
+            else:
+                for params in self.bert.parameters():
+                    params.requires_grad=False 
+                    
+            self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=False)
 
         self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
                             pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
@@ -347,9 +352,14 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
                             mean_cat='cat',
                             all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
 
-        # sizes = self.pooler.get_sentence_embedding_dimension()
-        self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=False)
-        self.bn = nn.BatchNorm1d(self.config.hidden_size, affine=False)
+        sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
+        layers = []
+        for i in range(len(sizes) - 2):
+            layers.append(Projector(config,sizes[i], sizes[i + 1]))
+        layers.append(Projector(config,sizes[-2], sizes[-1]))
+        self.projector = nn.Sequential(*layers)
+        
+        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
         
         self.apply(self._init_weights)
         
@@ -369,22 +379,30 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
         mlm_input_ids=None,
         mlm_labels=None,
     ):
-        
+        output = {}
         # return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        if self.args.dont_use_bert:
+            mixer_output = self.nlpmixer(attention_mask=attention_mask,
+                                        input_ids=input_ids,
+                                        token_type_ids=token_type_ids,
+                                        position_ids=position_ids)
+        else:
+            outputs = self.bert(
+                input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids,
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds,
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=encoder_attention_mask,
+                output_attentions=output_attentions,
+                output_hidden_states=self.config.output_hidden_states,
+                return_dict=return_dict,
+            )
 
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=self.config.output_hidden_states,
-            return_dict=return_dict,
-        )
+            mixer_output = self.nlpmixer(bert_output=outputs,
+                                        attention_mask=attention_mask)
 
         if self.args.do_mlm:
             assert mlm_input_ids is not None, "mlm_input_ids are needed for mlm"
@@ -401,18 +419,15 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
                 return_dict=True,
             )
             prediction_scores = self.lm_head(mlm_outputs.last_hidden_state)
+            output['prediction_scores'] = prediction_scores
         # pdb.set_trace()
         
-        projection = self.nlpmixer(bert_output=outputs,attention_mask=attention_mask)
-        pooled = self.pooler(nlpmixer_output=projection,attention_mask=attention_mask)
+        output['token_embeddings'] = mixer_output['token_embeddings']
+        pooled = self.pooler(nlpmixer_output=mixer_output,attention_mask=attention_mask)
+        projected = self.projector(pooled)
+        output['sentence_embedding'] = self.bn(projected)
 
-        if self.args.do_mlm:
-            projection.update({'prediction_scores':prediction_scores,
-                                'sentence_embedding': pooled})
-        else:        
-            projection.update({'sentence_embedding': pooled})
-
-        return projection
+        return output
 
 class BarlowBert(nn.Module):
 

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
-from transformers.models.bert.modeling_bert import BertEmbeddings
+from transformers import BertModel
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
@@ -73,7 +73,7 @@ class NLPMixer(nn.Module):
 
         self.all_hidden_states = config.output_hidden_states
         if self.do_embed:
-            self.embedding = BertEmbeddings(config)
+            self.embedding = BertModel(config).from_pretrained('bert-base-uncased').embeddings
 
         self.mixer_blocks = nn.ModuleList([])
 
