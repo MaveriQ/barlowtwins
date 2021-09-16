@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
 from transformers import BertModel
+from transformers.models.bert.modeling_bert import BertOnlyMLMHead
 
 class FeedForward(nn.Module):
     def __init__(self, dim, hidden_dim, dropout = 0.):
@@ -83,9 +84,7 @@ class NLPMixer(nn.Module):
         self.layer_norm = nn.LayerNorm(embed_dim)
 
         if self.do_mlm:
-            self.mlp_head = nn.Sequential(
-                nn.Linear(embed_dim, config.vocab_size)
-            )
+            self.bert_mlm_head = BertOnlyMLMHead(config)
 
     def forward(self,
                 attention_mask,
@@ -115,6 +114,6 @@ class NLPMixer(nn.Module):
 
         if self.do_mlm:
             return {'token_embeddings':x,
-                    'logits':self.mlp_head(x)}
+                    'logits':self.bert_mlm_head(x)}
         else:
             return {'token_embeddings':x}

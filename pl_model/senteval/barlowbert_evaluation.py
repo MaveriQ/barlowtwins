@@ -11,6 +11,7 @@ import os
 import torch
 import pdb
 import json
+from tqdm import tqdm
 from prettytable import PrettyTable
 import pandas as pd
 
@@ -152,7 +153,7 @@ def main(args):
 #     results = se.eval(args.transfer_tasks)
     results = {}
 
-    for task in args.tasks:
+    for task in tqdm(args.tasks):
         se = senteval.engine.SE(params, batcher, prepare)
         result = se.eval(task)
         results[task] = result
@@ -205,14 +206,14 @@ def main(args):
 
         # task_names = []
         # scores = []
-        for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
-            task_names.append(task)
-            if task in results:
-                scores.append("%.2f" % (results[task]['acc']))    
-            else:
-                scores.append("0.00")
-        task_names.append("Avg.")
-        scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
+        # for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
+        #     task_names.append(task)
+        #     if task in results:
+        #         scores.append("%.2f" % (results[task]['acc']))    
+        #     else:
+        #         scores.append("0.00")
+        # task_names.append("Avg.")
+        # scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
         print_table(task_names, scores)
     
     return (task_names, scores)
@@ -228,7 +229,7 @@ def main(args):
     #     json.dump(results,file,indent=4)
 
 if __name__=='__main__':
-    logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.DEBUG)
+    logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.ERROR)
     args = args_parse()
 
     all_checkpoints = list(Path(args.checkpoint_dir).glob('*.ckpt'))
@@ -260,6 +261,6 @@ if __name__=='__main__':
         result_row['epoch']=epoch
         result_row['step']=step
         all_results = all_results.append(result_row,ignore_index=True)
-
+        
     all_results.to_csv(filename)
         
