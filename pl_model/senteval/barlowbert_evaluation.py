@@ -43,7 +43,7 @@ def args_parse():
                         default='_results')
     parser.add_argument("--task_set", type=str, 
             choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts',
+            default='sts_dev',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],
@@ -165,7 +165,7 @@ def main(args):
 
         task_names = []
         scores = []
-        for task in ['STSBenchmark', 'SICKRelatedness']:
+        for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16','STSBenchmark', 'SICKRelatedness']:
             task_names.append(task)
             if task in results:
                 scores.append("%.2f" % (results[task]['dev']['spearman'][0] * 100))

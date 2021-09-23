@@ -393,12 +393,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
     ):
         output = {}
         # return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # if self.args.dont_use_bert:
-        #     mixer_output = self.nlpmixer(attention_mask=attention_mask,
-        #                                 input_ids=input_ids,
-        #                                 token_type_ids=token_type_ids,
-        #                                 position_ids=position_ids)
-        # else:
+
         bert_output = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -453,7 +448,6 @@ class BarlowBert(nn.Module):
         self.args = args
         self.model = SentenceBertWithNLPMixer(self.config,self.args)
         self.loss_fct = torch.nn.CrossEntropyLoss()
-        # self.mlm_weight =torch.nn.Pa
 
     def forward(self,x):
 
