@@ -95,12 +95,15 @@ class LitBarlowBert(pl.LightningModule):
         loss_dict = self.model(batch)
 
         if self.args.do_mlm:
-            self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
+            self.log('masked_lm_loss',loss_dict['mlm_loss'])
 
         if self.args.do_sim:
             self.log("sim_loss",loss_dict['sim_loss'])
             self.log("sim_ondiag",loss_dict['sim_ondiag'])
             self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+
+        if self.args.do_simcse:
+            self.log("simcse_loss",loss_dict['simcse_loss'])
 
         # pdb.set_trace()
         self.log("train_loss", loss_dict['loss'])
@@ -181,9 +184,11 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--all_hidden_states', action='store_true')
         parser.add_argument('--do_mlm', action='store_true')
         parser.add_argument('--do_sim', action='store_true')
+        parser.add_argument('--do_simcse', action='store_true')
         parser.add_argument('--dont_use_lars', action='store_true')
         parser.add_argument('--use_llrd', action='store_true')
         parser.add_argument('--mlm_weight', type=float, default=0.1)
+        parser.add_argument('--simcse_weight', type=float, default=1.0)
         parser.add_argument('--warmup_ratio', type=float, default=0.1)
         parser.add_argument('--num_mixer_layers', type=int, default=0)
         parser.add_argument('--num_trainable_layers', type=int, default=6)
@@ -226,7 +231,7 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 2 --all_hidden_states --use_llrd --num_trainable_layers 3'.split()
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 8 --all_hidden_states --do_simcse --num_trainable_layers 3'.split()
     tmp_args_2 = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
     args = parser.parse_args()
 
