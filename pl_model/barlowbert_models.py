@@ -406,12 +406,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
     ):
         output = {}
         # return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # if self.args.dont_use_bert:
-        #     mixer_output = self.nlpmixer(attention_mask=attention_mask,
-        #                                 input_ids=input_ids,
-        #                                 token_type_ids=token_type_ids,
-        #                                 position_ids=position_ids)
-        # else:
+
         bert_output = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -457,6 +452,19 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
 
         return output
 
+class Similarity(nn.Module):
+    """
+    Dot product or cosine similarity
+    """
+
+    def __init__(self, temp):
+        super().__init__()
+        self.temp = temp
+        self.cos = nn.CosineSimilarity(dim=-1)
+
+    def forward(self, x, y):
+        return self.cos(x, y) / self.temp
+        
 class BarlowBert(nn.Module):
 
     def __init__(self, config,args):
@@ -466,6 +474,7 @@ class BarlowBert(nn.Module):
         self.args = args
         self.model = SentenceBertWithNLPMixer(self.config,self.args)
         self.loss_fct = torch.nn.CrossEntropyLoss()
+
         self.sim = Similarity(self.args.temp)
 
     def forward(self,x):
@@ -492,6 +501,8 @@ class BarlowBert(nn.Module):
             simcse_loss = self.loss_fct(cos_sim, labels)
             loss_dict['simcse_loss'] = simcse_loss
             loss = loss + self.args.simcse_weight * simcse_loss
+            loss = corr_loss + self.args.simcse_weight * simcse_loss
+
 
         if self.args.do_sim:
             c_in = CosineSimilarity(projection1,projection2)
