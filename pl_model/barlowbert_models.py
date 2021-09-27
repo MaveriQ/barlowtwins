@@ -25,6 +25,19 @@ ACT2FN = {
     "sigmoid": torch.sigmoid,
 }
 
+class Similarity(nn.Module):
+    """
+    Dot product or cosine similarity
+    """
+
+    def __init__(self, temp):
+        super().__init__()
+        self.temp = temp
+        self.cos = nn.CosineSimilarity(dim=-1)
+
+    def forward(self, x, y):
+        return self.cos(x, y) / self.temp
+
 def CosineSimilarity(x1,x2):
     x1n = x1/x1.norm(dim=1, keepdim=True)
     x2n = x2/x2.norm(dim=1, keepdim=True)
@@ -453,7 +466,7 @@ class BarlowBert(nn.Module):
         self.args = args
         self.model = SentenceBertWithNLPMixer(self.config,self.args)
         self.loss_fct = torch.nn.CrossEntropyLoss()
-        # self.mlm_weight =torch.nn.Pa
+        self.sim = Similarity(self.args.temp)
 
     def forward(self,x):
 
@@ -466,23 +479,29 @@ class BarlowBert(nn.Module):
 
         projection1 = output1['sentence_embedding']
         projection2 = output2['sentence_embedding']
+
         c_out = (projection1.transpose(0,1) @ projection2)
         c_out.div_(self.args.batch_size)
-
         corr_loss = get_diag_loss(loss_dict,c_out,self.args.lambda_corr,'corr')
-        # pdb.set_trace()
+        loss_dict['corr_loss'] = corr_loss
+        loss = corr_loss
+
+        if self.args.do_simcse:
+            cos_sim = self.sim(projection1.unsqueeze(1), projection2.unsqueeze(0))
+            labels = torch.arange(cos_sim.size(0)).long().to(cos_sim.device)
+            simcse_loss = self.loss_fct(cos_sim, labels)
+            loss_dict['simcse_loss'] = simcse_loss
+            loss = loss + self.args.simcse_weight * simcse_loss
+
         if self.args.do_sim:
             c_in = CosineSimilarity(projection1,projection2)
             # c_in.div_(self.args.batch_size)
-
             sim_loss = get_diag_loss(loss_dict,c_in,self.args.lambda_sim,'sim')
-            loss = sim_loss + self.args.sim_weight * corr_loss
+            loss = loss + self.args.sim_weight * sim_loss
             loss_dict['sim_loss'] = sim_loss
-        else:
-            loss = corr_loss
-        loss_dict['corr_loss'] = corr_loss
 
-        if output1.get('prediction_scores') is not None:
+        if self.args.do_mlm:
+            assert output1.get('prediction_scores') is not None
             prediction_scores = torch.cat([output1['prediction_scores'],output2['prediction_scores']],axis=1)
             mlm_labels = torch.cat([y1['mlm_labels'],y2['mlm_labels']],axis=1)
             mlm_labels = mlm_labels.view(-1, mlm_labels.size(-1))
