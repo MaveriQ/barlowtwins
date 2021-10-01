@@ -1,4 +1,4 @@
-from datasets.load import load_from_disk
+import datasets
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
 from datasets import load_dataset
@@ -131,13 +131,13 @@ class DataCollatorForBarlowBertWithMLM:
     """
 
     tokenizer: PreTrainedTokenizerBase
-    mlm: bool = True
+    # mlm: bool = True
     mlm_probability: float = 0.15
     pad_to_multiple_of: Optional[int] = None
     do_mlm: Optional[bool] = False
 
     def __post_init__(self):
-        if self.mlm and self.tokenizer.mask_token is None:
+        if self.do_mlm and self.tokenizer.mask_token is None:
             raise ValueError(
                 "This tokenizer does not have a mask token which is necessary for masked language modeling. "
                 "You should pass `mlm=False` to train on causal language modeling instead."
@@ -213,11 +213,18 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         super().__init__()
         self.args = args
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased', padding=True,truncation=True)
-        self.collator = DataCollatorForBarlowBertWithMLM(self.tokenizer,mlm_probability=self.args.mlm_probability)
+        self.collator = DataCollatorForBarlowBertWithMLM(tokenizer=self.tokenizer,
+                                                        do_mlm=(self.args.mlm_weight > 0),
+                                                        mlm_probability=self.args.mlm_probability)
 
         print(f'loading {args.dataset} dataset..')
-        self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
-        self.num_rows = self.dataset.num_rows # 74,004,228
+        if self.args.dataset == '1mil':
+            onemil_dataset = datasets.load_dataset('text', data_files={'train': str(self.args.datadir/'wiki1m_for_simcse.txt')})
+            self.dataset = onemil_dataset['train'].map(lambda e: self.tokenizer(e['text'],return_token_type_ids=False,truncation=True,padding='max_length',max_length=self.args.seq_length),remove_columns=['text'],num_proc=4)
+        else:
+            self.dataset = datasets.load_from_disk(self.args.datadir/f'bookcorpus_{self.args.dataset}_128') # 74,004,228
+        self.dataset.set_format('torch')
+        self.num_rows = len(self.dataset) # 1,000,000
 
     def setup(self, stage: Optional[str] = None):
         train_size = int(0.8 * self.num_rows) # about 80%
@@ -227,7 +234,10 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.corpus_train, self.corpus_val, self.corpus_test = random_split(self.dataset, [train_size, val_size,test_size])
 
     def train_dataloader(self):
-        return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
+        if self.args.mlm_weight > 0:
+            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
+        else:
+            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
 
     # def val_dataloader(self):
     #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
@@ -238,12 +248,10 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--datadir', type=Path, metavar='DIR', default='/mounts/data/proj/jabbar/barlowbert/',
-                        help='path to dataset') 
+        parser.add_argument('--datadir', type=Path, metavar='DIR', default='/mounts/data/proj/jabbar/barlowbert/', help='path to dataset') 
         parser.add_argument('--batch_size', type=int, default=1024)
-        parser.add_argument('--dataset', type=str, default='20mil')
+        parser.add_argument('--seq_length', type=int, default=128)
+        parser.add_argument('--dataset', type=str, default='1mil')
         parser.add_argument('--mlm_probability', type=float, default=0.2)
-        parser.add_argument('--workers', 
-                        default=4, type=int, metavar='N',
-                        help='number of data loader workers')            
+        parser.add_argument('--workers', default=4, type=int, help='number of data loader workers')            
         return parser

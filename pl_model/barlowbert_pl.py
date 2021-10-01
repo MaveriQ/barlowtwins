@@ -94,25 +94,24 @@ class LitBarlowBert(pl.LightningModule):
 
         loss_dict = self.model(batch)
 
-        if self.args.do_mlm:
-            self.log('masked_lm_loss',loss_dict['mlm_loss'])
+        # if self.args.do_mlm:
+        #     self.log('masked_lm_loss',loss_dict['mlm_loss'])
 
-        if self.args.do_simcse:
-            self.log('simcse_loss',self.args.simcse_weight * loss_dict['simcse_loss'])
+        # if self.args.do_simcse:
+        #     self.log('simcse_loss',self.args.simcse_weight * loss_dict['simcse_loss'])
 
-        if self.args.do_sim:
-            self.log("sim_loss",loss_dict['sim_loss'])
-            self.log("sim_ondiag",loss_dict['sim_ondiag'])
-            self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+        # if self.args.do_sim:
+        #     self.log("sim_loss",loss_dict['sim_loss'])
+        #     self.log("sim_ondiag",loss_dict['sim_ondiag'])
+        #     self.log("sim_offdiag",loss_dict['sim_offdiag'])   
 
-        if self.args.do_simcse:
-            self.log("simcse_loss",loss_dict['simcse_loss'])
-
-        # pdb.set_trace()
-        self.log("train_loss", loss_dict['loss'])
-        self.log("corr_loss",loss_dict['corr_loss'])
-        self.log("corr_ondiag",loss_dict['corr_ondiag'])
-        self.log("corr_offdiag",loss_dict['corr_offdiag'])
+        # # pdb.set_trace()
+        # if not self.args.skip_barlow:
+        #     self.log("corr_loss",loss_dict['corr_loss'])
+        #     self.log("corr_ondiag",loss_dict['corr_ondiag'])
+        #     self.log("corr_offdiag",loss_dict['corr_offdiag'])
+        
+        self.log("train_loss", loss_dict)
         # self.log("lr",self.optimizers().param_groups[0]['lr'])        
 
         # tensorboard = self.logger.experiment[0]
@@ -139,44 +138,44 @@ class LitBarlowBert(pl.LightningModule):
         #              weight_decay_filter=exclude_bias_and_norm,
         #              lars_adaptation_filter=exclude_bias_and_norm)
 
-        if self.args.dont_use_lars:
+        if self.args.skip_lars:
             optim = torch.optim.AdamW(self.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
-        elif self.args.use_llrd:
-            optim = bert_base_AdamW_LLRD(self)            
+        # elif self.args.use_llrd:
+        #     optim = bert_base_AdamW_LLRD(self)            
         else:
             optim = LARS(self.parameters(), lr=self.args.lr,weight_decay=self.args.weight_decay)
         
         # sched = torch.optim.lr_scheduler.OneCycleLR(optim,max_lr=self.args.lr,total_steps=self.num_training_steps,anneal_strategy='linear')
-        sched = get_linear_schedule_with_warmup(
-            optimizer = optim,
-            num_warmup_steps = int(self.args.warmup_ratio * self.num_training_steps),
-            num_training_steps = self.num_training_steps
-        )
+        # sched = get_linear_schedule_with_warmup(
+        #     optimizer = optim,
+        #     num_warmup_steps = int(self.args.warmup_ratio * self.num_training_steps),
+        #     num_training_steps = self.num_training_steps
+        # )
 
-        lr_scheduler_config = {
-            # REQUIRED: The scheduler instance
-            "scheduler": sched,
-            # The unit of the scheduler's step size, could also be 'step'.
-            # 'epoch' updates the scheduler on epoch end whereas 'step'
-            # updates it after a optimizer update.
-            "interval": "step",
-            # How many epochs/steps should pass between calls to
-            # `scheduler.step()`. 1 corresponds to updating the learning
-            # rate after every epoch/step.
-            "frequency": 1,
-            # Metric to to monitor for schedulers like `ReduceLROnPlateau`
-            # "monitor": None,
-            # If set to `True`, will enforce that the value specified 'monitor'
-            # is available when the scheduler is updated, thus stopping
-            # training if not found. If set to `False`, it will only produce a warning
-            # "strict": True,
-            # If using the `LearningRateMonitor` callback to monitor the
-            # learning rate progress, this keyword can be used to specify
-            # a custom logged name
-            "name": 'lr_scheduler',
-        }
+        # lr_scheduler_config = {
+        #     # REQUIRED: The scheduler instance
+        #     "scheduler": sched,
+        #     # The unit of the scheduler's step size, could also be 'step'.
+        #     # 'epoch' updates the scheduler on epoch end whereas 'step'
+        #     # updates it after a optimizer update.
+        #     "interval": "step",
+        #     # How many epochs/steps should pass between calls to
+        #     # `scheduler.step()`. 1 corresponds to updating the learning
+        #     # rate after every epoch/step.
+        #     "frequency": 1,
+        #     # Metric to to monitor for schedulers like `ReduceLROnPlateau`
+        #     # "monitor": None,
+        #     # If set to `True`, will enforce that the value specified 'monitor'
+        #     # is available when the scheduler is updated, thus stopping
+        #     # training if not found. If set to `False`, it will only produce a warning
+        #     # "strict": True,
+        #     # If using the `LearningRateMonitor` callback to monitor the
+        #     # learning rate progress, this keyword can be used to specify
+        #     # a custom logged name
+        #     "name": 'lr_scheduler',
+        # }
         return {'optimizer':optim,
-                'scheduler':lr_scheduler_config
+                # 'scheduler':lr_scheduler_config
                 }        
 
     @property
@@ -201,16 +200,19 @@ class LitBarlowBert(pl.LightningModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--all_hidden_states', action='store_true')
 
-        parser.add_argument('--do_mlm', action='store_true')
-        parser.add_argument('--mlm_weight', type=float, default=0.1)
-        parser.add_argument('--do_simcse', action='store_true')
-        parser.add_argument('--simcse_weight', type=float, default=10.0)
-        parser.add_argument('--do_sim', action='store_true')
-        parser.add_argument('--sim_weight', type=float, default=0.001)
+        parser.add_argument('--skip_barlow', action='store_true')
+        parser.add_argument('--simcse_weight', type=float, default=0)
+        parser.add_argument('--cov_weight', type=float, default=0)
+        parser.add_argument('--var_weight', type=float, default=0)
+        parser.add_argument('--mse_weight', type=float, default=0)
+        parser.add_argument('--sim_weight', type=float, default=0)
+        parser.add_argument('--mlm_weight', type=float, default=0)
+        parser.add_argument('--lambda_corr', type=float, default=0.001)
+        parser.add_argument('--lambda_sim', type=float, default=1.0)   
 
         parser.add_argument('--temp', type=float, default=0.05) 
-        parser.add_argument('--dont_use_bert', action='store_true')
-        parser.add_argument('--dont_use_lars', action='store_true')
+        # parser.add_argument('--skip_bert', action='store_true')
+        parser.add_argument('--skip_lars', action='store_true')
         parser.add_argument('--warmup_ratio', type=float, default=0.1)
         parser.add_argument('--num_mixer_layers', type=int, default=0)
         parser.add_argument('--num_trainable_layers', type=int, default=6)
@@ -221,13 +223,10 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--cls_pooling', type=bool, default=False)
 
         parser.add_argument('--projector', default='768-256-256', type=str)
-        parser.add_argument('--pool_type', type=str, default='cat')
+        parser.add_argument('--pool_type', type=str, default='mean')
 
         parser.add_argument('--hidden_dropout_prob', default=0.1, type=float, help='dropout for hidden layers')
-        parser.add_argument('--attention_probs_dropout_prob', default=0.1, type=float, help='dropout for attention layers')
-
-        parser.add_argument('--lambda_corr', type=float, default=0.001)
-        parser.add_argument('--lambda_sim', type=float, default=1.0)              
+        parser.add_argument('--attention_probs_dropout_prob', default=0.1, type=float, help='dropout for attention layers')           
         return parser
 
 def args_parse():
@@ -253,9 +252,9 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run False --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 32 --all_hidden_states --do_simcse --num_trainable_layers 3'.split()
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 1mil --precision 16 --batch_size 32 --all_hidden_states --num_trainable_layers 3 --var_weight 1.0 --cov_weight 1.0 --simcse_weight 1.0 --mse_weight 1.0'.split()
     tmp_args_2 = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
-    args = parser.parse_args()
+    args = parser.parse_args(tmp_args)
 
     args.tags.insert(0, args.exp_name)
     args.accelerator = 'ddp'
@@ -300,7 +299,7 @@ def main():
     trainer = pl.Trainer.from_argparse_args(args,
                                             plugins=pl.plugins.DDPPlugin(find_unused_parameters=False),
                                             logger=[tb_logger],
-                                            callbacks=[ckpt_callback, lr_monitor]
+                                            callbacks=[ckpt_callback]# lr_monitor]
                                             )
 
     trainer.fit(model, dm)

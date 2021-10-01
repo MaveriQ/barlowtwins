@@ -47,9 +47,6 @@ def CosineSimilarity(x1,x2):
 def get_diag_loss(loss_dict,c,weight,typ):
     on_diag = torch.diagonal(c).add_(-1).pow_(2).mean()
     off_diag = off_diagonal(c).pow_(2).mean()
-    # pdb.set_trace()
-    # self.log(f"{typ}_ondiag", weight * on_diag)
-    # self.log(f"{typ}_offdiag", off_diag)
     loss_dict[f'{typ}_ondiag'] = weight * on_diag
     loss_dict[f'{typ}_offdiag'] = off_diag
     return off_diag + weight * on_diag
@@ -355,15 +352,15 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
         self.config = config
         self.args = args
   
-        # if self.args.dont_use_bert:
+        # if self.args.skip_bert:
         #     self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=True)
         # else:
 
-        if self.args.do_mlm:
+        if self.args.mlm_weight > 0:
             self.lm_head = BertLMPredictionHead(config)
             assert self.num_trainable_layers > 0, "number of trainable layers should be > 0 for mlm"           
         
-        if self.args.num_mixer_layers>0:
+        if self.args.num_mixer_layers > 0:
             self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=False)
 
         self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
@@ -430,9 +427,9 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
             output['token_embeddings'] = pooled['token_embeddings']
 
         projected = self.projector(pooled['sentence_embedding'])
-        output['sentence_embedding'] = self.bn(projected)
+        output['sentence_embedding'] = projected # Removed batchnorm for var_loss calc self.bn(projected)
 
-        if self.args.do_mlm:
+        if self.args.mlm_weight > 0:
             assert mlm_input_ids is not None, "mlm_input_ids are needed for mlm"
             mlm_input_ids = mlm_input_ids.view((-1, mlm_input_ids.size(-1)))
             mlm_outputs = self.bert(
@@ -481,7 +478,11 @@ class BarlowBert(nn.Module):
 
         loss_dict = {}
 
-        y1, y2 = x
+        if self.args.mlm_weight != 0: # The input_ids are different due to mlm component
+            y1, y2 = x
+        else:
+            y1=x
+            y2=x
         # pdb.set_trace()
         output1 = self.model(**y1)
         output2 = self.model(**y2)
@@ -489,29 +490,56 @@ class BarlowBert(nn.Module):
         projection1 = output1['sentence_embedding']
         projection2 = output2['sentence_embedding']
 
-        c_out = (projection1.transpose(0,1) @ projection2)
-        c_out.div_(self.args.batch_size)
-        corr_loss = get_diag_loss(loss_dict,c_out,self.args.lambda_corr,'corr')
-        loss_dict['corr_loss'] = corr_loss
-        loss = corr_loss
+        dim = projection1.shape[1]
+        diag = torch.eye(dim, device=projection1.device)
 
-        if self.args.do_simcse:
+        if self.args.skip_barlow:
+            loss = 0
+        else:
+            z1m = projection1 - projection1.mean(dim=0)
+            z2m = projection2 - projection2.mean(dim=0)
+            c_out = (z1m.T @ z2m) / (self.args.batch_size - 1)
+            corr_loss = get_diag_loss(loss_dict,c_out,self.args.lambda_corr,'corr')
+            loss_dict['corr_loss'] = corr_loss
+            loss = corr_loss
+
+        if self.args.cov_weight != 0:
+            z1m = projection1 - projection1.mean(dim=0)
+            z2m = projection2 - projection2.mean(dim=0)
+            cov_z1 = (z1m.T @ z1m) / (self.args.batch_size - 1)
+            cov_z2 = (z2m.T @ z2m) / (self.args.batch_size - 1)
+            cov_loss = cov_z1[~diag.bool()].pow_(2).sum() / dim + cov_z2[~diag.bool()].pow_(2).sum() / dim #loss from off_diag entries
+            loss = loss + self.args.cov_weight * cov_loss
+            loss_dict['cov_loss'] = cov_loss
+        
+        if self.args.var_weight != 0:
+            eps = 1e-4
+            std_z1 = torch.sqrt(projection1.var(dim=0) + eps)
+            std_z2 = torch.sqrt(projection2.var(dim=0) + eps)
+            var_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
+            loss = loss + self.args.var_weight * var_loss
+            loss_dict['var_loss'] = var_loss
+
+        if self.args.simcse_weight != 0:
             cos_sim = self.sim(projection1.unsqueeze(1), projection2.unsqueeze(0))
             labels = torch.arange(cos_sim.size(0)).long().to(cos_sim.device)
             simcse_loss = self.loss_fct(cos_sim, labels)
-            loss_dict['simcse_loss'] = simcse_loss
             loss = loss + self.args.simcse_weight * simcse_loss
-            loss = corr_loss + self.args.simcse_weight * simcse_loss
+            loss_dict['simcse_loss'] = simcse_loss
 
+        if self.args.mse_weight != 0:
+            mse_loss = F.mse_loss(projection1, projection2)
+            loss = loss + self.args.mse_weight * mse_loss
+            loss_dict['mse_loss'] = mse_loss
 
-        if self.args.do_sim:
+        if self.args.sim_weight != 0:
             c_in = CosineSimilarity(projection1,projection2)
             # c_in.div_(self.args.batch_size)
             sim_loss = get_diag_loss(loss_dict,c_in,self.args.lambda_sim,'sim')
             loss = loss + self.args.sim_weight * sim_loss
             loss_dict['sim_loss'] = sim_loss
 
-        if self.args.do_mlm:
+        if self.args.mlm_weight != 0:
             assert output1.get('prediction_scores') is not None
             prediction_scores = torch.cat([output1['prediction_scores'],output2['prediction_scores']],axis=1)
             mlm_labels = torch.cat([y1['mlm_labels'],y2['mlm_labels']],axis=1)
