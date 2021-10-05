@@ -47,7 +47,7 @@ def CosineSimilarity(x1,x2):
 def get_diag_loss(loss_dict,c,weight,typ):
     on_diag = torch.diagonal(c).add_(-1).pow_(2).mean()
     off_diag = off_diagonal(c).pow_(2).mean()
-    loss_dict[f'{typ}_ondiag'] = weight * on_diag
+    loss_dict[f'{typ}_ondiag'] = on_diag
     loss_dict[f'{typ}_offdiag'] = off_diag
     return off_diag + weight * on_diag
 
@@ -369,7 +369,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
                             pooling_mode_mean_tokens=True,#self.args.mean_pooling,
                             mean_cat='cat',
                             all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
-
+                            
         sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
         layers = []
         for i in range(len(sizes) - 2):
@@ -429,7 +429,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
         projected = self.projector(pooled['sentence_embedding'])
         output['sentence_embedding'] = projected # Removed batchnorm for var_loss calc self.bn(projected)
 
-        if self.args.mlm_weight > 0:
+        if self.args.mlm_weight != 0:
             assert mlm_input_ids is not None, "mlm_input_ids are needed for mlm"
             mlm_input_ids = mlm_input_ids.view((-1, mlm_input_ids.size(-1)))
             mlm_outputs = self.bert(

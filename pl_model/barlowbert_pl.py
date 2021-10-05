@@ -94,25 +94,8 @@ class LitBarlowBert(pl.LightningModule):
 
         loss_dict = self.model(batch)
 
-        # if self.args.do_mlm:
-        #     self.log('masked_lm_loss',loss_dict['mlm_loss'])
-
-        # if self.args.do_simcse:
-        #     self.log('simcse_loss',self.args.simcse_weight * loss_dict['simcse_loss'])
-
-        # if self.args.do_sim:
-        #     self.log("sim_loss",loss_dict['sim_loss'])
-        #     self.log("sim_ondiag",loss_dict['sim_ondiag'])
-        #     self.log("sim_offdiag",loss_dict['sim_offdiag'])   
-
-        # # pdb.set_trace()
-        # if not self.args.skip_barlow:
-        #     self.log("corr_loss",loss_dict['corr_loss'])
-        #     self.log("corr_ondiag",loss_dict['corr_ondiag'])
-        #     self.log("corr_offdiag",loss_dict['corr_offdiag'])
-        
-        self.log("train_loss", loss_dict)
-        # self.log("lr",self.optimizers().param_groups[0]['lr'])        
+        for key,val in loss_dict.items():
+            self.log(key,val)
 
         # tensorboard = self.logger.experiment[0]
         # if self.global_step % 500 == 0:
@@ -198,7 +181,7 @@ class LitBarlowBert(pl.LightningModule):
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--all_hidden_states', action='store_true')
+        parser.add_argument('--skip_hidden_states', action='store_true')
 
         parser.add_argument('--skip_barlow', action='store_true')
         parser.add_argument('--simcse_weight', type=float, default=0)
@@ -207,7 +190,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--mse_weight', type=float, default=0)
         parser.add_argument('--sim_weight', type=float, default=0)
         parser.add_argument('--mlm_weight', type=float, default=0)
-        parser.add_argument('--lambda_corr', type=float, default=0.001)
+        parser.add_argument('--lambda_corr', type=float, default=0.01)
         parser.add_argument('--lambda_sim', type=float, default=1.0)   
 
         parser.add_argument('--temp', type=float, default=0.05) 
@@ -215,7 +198,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--skip_lars', action='store_true')
         parser.add_argument('--warmup_ratio', type=float, default=0.1)
         parser.add_argument('--num_mixer_layers', type=int, default=0)
-        parser.add_argument('--num_trainable_layers', type=int, default=6)
+        parser.add_argument('--num_trainable_layers', type=int, default=3)
 
         parser.add_argument('--bert_pooler', type=bool, default=False)
         parser.add_argument('--max_pooling', type=bool, default=False)
@@ -252,12 +235,14 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 1mil --precision 16 --batch_size 32 --all_hidden_states --num_trainable_layers 3 --var_weight 1.0 --cov_weight 1.0 --simcse_weight 1.0 --mse_weight 1.0'.split()
-    tmp_args_2 = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
-    args = parser.parse_args(tmp_args)
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --var_weight 1.0 --cov_weight 1.0 --simcse_weight 1.0 --mse_weight 1.0'.split()
+    tmp_args_2 = "--gpus 1 --precision 16 --batch_size 16 --num_trainable_layers 3 --var_weight 1.0 --cov_weight 1.0 --simcse_weight 1.0 --mse_weight 1.0 --seq_len 512 --projector 768 --max_epochs 1".split()    
+    args = parser.parse_args()
 
     args.tags.insert(0, args.exp_name)
+    args.precision = 16
     args.accelerator = 'ddp'
+    # args.plugins = []
     args.benchmark = True
 
     return args
@@ -272,13 +257,16 @@ def main():
     else:
         config = CONFIG_MAPPING['bert'].from_pretrained('bert-base-uncased')
     
-    if args.all_hidden_states:
+    if args.skip_hidden_states:
+        config.output_hidden_states=False
+    else:
         config.output_hidden_states=True
 
     config.max_position_embeddings=128 #because of the preprocessed dataset
     config.hidden_dropout_prob = args.hidden_dropout_prob
 
     model = LitBarlowBert(args,config)
+    # pdb.set_trace()
     dm = BookCorpusDataModuleForMLM(args)
 
     tb_logger = TensorBoardLogger(
@@ -289,7 +277,7 @@ def main():
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint'/'_'.join(args.tags),
                                     # filename='_'.join(args.tags),
-                                    every_n_train_steps=4000,
+                                    every_n_train_steps=2000,
                                     save_top_k=-1,
                                     # train_time_interval=timedelta(hours=4)
                                     )

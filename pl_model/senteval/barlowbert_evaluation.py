@@ -3,6 +3,7 @@ import sys
 sys.path.insert(0, '..')
 from barlowbert_pl import LitBarlowBert
 from transformers import BertTokenizerFast
+from transformers import logging as tf_logging
 from tqdm import tqdm
 from pathlib import Path
 from argparse import ArgumentParser
@@ -14,6 +15,8 @@ import json
 from tqdm import tqdm
 from prettytable import PrettyTable
 import pandas as pd
+
+tf_logging.set_verbosity_error()
 
 list_of_tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16',
                     'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'SST5', 'TREC', 'MRPC',
@@ -246,10 +249,11 @@ if __name__=='__main__':
     else:
         print(f'Processing {len(all_checkpoints)} checkpoints...')
     # pdb.set_trace()
-    for ckpt in all_checkpoints:
+    for i,ckpt in enumerate(all_checkpoints):
         epoch,step=ckpt.stem.split('-')
         epoch = epoch.split('=')[1]
         step = step.split('=')[1]
+        print(f'\ncheckpoint number : {i}/{len(all_checkpoints)}\n')
         if len(all_results)>0: # loaded some results
             if (int(epoch) in all_results['epoch'].values) & (int(step) in all_results['step'].values):
                 print(f'Skipping epoch {epoch}, step {step}.')
