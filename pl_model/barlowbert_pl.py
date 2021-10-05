@@ -36,19 +36,22 @@ class LitBarlowBert(pl.LightningModule):
 
         loss_dict = self.model(batch)
 
-        if self.args.do_mlm:
-            self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
+        for key,val in loss_dict.items():
+            self.log(key,val)
 
-        if self.args.do_sim:
-            self.log("sim_loss",loss_dict['sim_loss'])
-            self.log("sim_ondiag",loss_dict['sim_ondiag'])
-            self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+        # if self.args.do_mlm:
+        #     self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
 
-        # pdb.set_trace()
-        self.log("train_loss", loss_dict['loss'])
-        self.log("corr_loss",loss_dict['corr_loss'])
-        self.log("corr_ondiag",loss_dict['corr_ondiag'])
-        self.log("corr_offdiag",loss_dict['corr_offdiag'])
+        # if self.args.do_sim:
+        #     self.log("sim_loss",loss_dict['sim_loss'])
+        #     self.log("sim_ondiag",loss_dict['sim_ondiag'])
+        #     self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+
+        # # pdb.set_trace()
+        # self.log("train_loss", loss_dict['loss'])
+        # self.log("corr_loss",loss_dict['corr_loss'])
+        # self.log("corr_ondiag",loss_dict['corr_ondiag'])
+        # self.log("corr_offdiag",loss_dict['corr_offdiag'])
         self.log("lr",self.optimizers().param_groups[0]['lr'])        
 
         # tensorboard = self.logger.experiment[0]

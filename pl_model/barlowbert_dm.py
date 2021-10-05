@@ -1,7 +1,6 @@
-from datasets.load import load_from_disk
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, random_split
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Union
 import torch
@@ -216,7 +215,15 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.collator = DataCollatorForBarlowBertWithMLM(self.tokenizer,mlm_probability=self.args.mlm_probability)
 
         print(f'loading {args.dataset} dataset..')
-        self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
+        # self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
+        if self.args.dataset=='1mil':
+            corpus = load_dataset('bookcorpus',split='train').select(range(1000000))
+        elif self.args.dataset=='5mil':
+            corpus = load_dataset('bookcorpus',split='train').select(range(5000000))
+        elif self.args.dataset=='10mil':
+            corpus = load_dataset('bookcorpus',split='train').select(range(10000000))
+
+        self.dataset = corpus.map(lambda e: self.tokenizer(e['text'],truncation=True,padding='max_length',max_length=self.args.seq_len),num_proc=16)
         self.num_rows = self.dataset.num_rows # 74,004,228
 
     def setup(self, stage: Optional[str] = None):
@@ -227,8 +234,10 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.corpus_train, self.corpus_val, self.corpus_test = random_split(self.dataset, [train_size, val_size,test_size])
 
     def train_dataloader(self):
-        return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
-
+        if self.args.do_mlm:
+            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
+        else:
+            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
     # def val_dataloader(self):
     #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
 
@@ -240,8 +249,9 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument('--datadir', type=Path, metavar='DIR', default='/mounts/data/proj/jabbar/barlowbert/',
                         help='path to dataset') 
-        parser.add_argument('--batch_size', type=int, default=1024)
-        parser.add_argument('--dataset', type=str, default='20mil')
+        parser.add_argument('--batch_size', type=int, default=32)
+        parser.add_argument('--seq_len', type=int, default=256)
+        parser.add_argument('--dataset', type=str, default='5mil')
         parser.add_argument('--mlm_probability', type=float, default=0.2)
         parser.add_argument('--workers', 
                         default=4, type=int, metavar='N',
