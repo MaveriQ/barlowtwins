@@ -215,15 +215,16 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.collator = DataCollatorForBarlowBertWithMLM(self.tokenizer,mlm_probability=self.args.mlm_probability)
 
         print(f'loading {args.dataset} dataset..')
-        # self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
-        if self.args.dataset=='1mil':
-            corpus = load_dataset('bookcorpus',split='train').select(range(1000000))
-        elif self.args.dataset=='5mil':
-            corpus = load_dataset('bookcorpus',split='train').select(range(5000000))
-        elif self.args.dataset=='10mil':
-            corpus = load_dataset('bookcorpus',split='train').select(range(10000000))
+        self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
+        # if self.args.dataset=='1mil':
+        #     corpus = load_dataset('bookcorpus',split='train').select(range(1000000))
+        # elif self.args.dataset=='5mil':
+        #     corpus = load_dataset('bookcorpus',split='train').select(range(5000000))
+        # elif self.args.dataset=='10mil':
+        #     corpus = load_dataset('bookcorpus',split='train').select(range(10000000))
 
-        self.dataset = corpus.map(lambda e: self.tokenizer(e['text'],truncation=True,padding='max_length',max_length=self.args.seq_len),num_proc=16)
+        # self.dataset = corpus.map(lambda e: self.tokenizer(e['text'],return_token_type_ids=False,truncation=True,padding='max_length',max_length=self.args.seq_len),remove_columns=['text'],num_proc=16)
+        # self.dataset.set_format('torch')
         self.num_rows = self.dataset.num_rows # 74,004,228
 
     def setup(self, stage: Optional[str] = None):
@@ -234,10 +235,10 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.corpus_train, self.corpus_val, self.corpus_test = random_split(self.dataset, [train_size, val_size,test_size])
 
     def train_dataloader(self):
-        if self.args.do_mlm:
+        # if self.args.do_mlm:
             return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
-        else:
-            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
+        # else:
+            # return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
     # def val_dataloader(self):
     #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
 

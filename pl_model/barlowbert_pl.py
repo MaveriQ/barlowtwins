@@ -2,7 +2,7 @@ from collections import namedtuple
 import pdb
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from transformers import CONFIG_MAPPING, BertTokenizerFast
+from transformers import CONFIG_MAPPING, BertTokenizerFast, logging
 import torch
 from argparse import ArgumentParser
 from pl_bolts.optimizers import LARS
@@ -10,6 +10,8 @@ from pl_bolts.optimizers import LARS
 import pytorch_lightning as pl
 from barlowbert_models import BarlowBert
 from barlowbert_dm import BookCorpusDataModuleForMLM, DataCollatorForBarlowBertWithMLM
+
+logging.set_verbosity_error()
 
 bert_small = {
     "hidden_size" : 512 ,

@@ -460,11 +460,11 @@ class BarlowBert(nn.Module):
 
         loss_dict = {}
 
-        if self.args.do_mlm:
-            y1, y2 = x
-        else: 
-            y1 = x
-            y2 = deepcopy(x)
+        # if self.args.do_mlm:
+        y1, y2 = x
+        # else: 
+        #     y1 = x
+        #     y2 = deepcopy(x)
             
         # pdb.set_trace()
         output1 = self.model(**y1)

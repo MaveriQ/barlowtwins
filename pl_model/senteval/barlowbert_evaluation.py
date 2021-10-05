@@ -14,6 +14,9 @@ import json
 from tqdm import tqdm
 from prettytable import PrettyTable
 import pandas as pd
+from transformers import logging as tf_logging
+
+tf_logging.set_verbosity_error()
 
 list_of_tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16',
                     'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'SST5', 'TREC', 'MRPC',
@@ -43,7 +46,7 @@ def args_parse():
                         default='_results')
     parser.add_argument("--task_set", type=str, 
             choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts',
+            default='sts_dev',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],
@@ -246,10 +249,11 @@ if __name__=='__main__':
     else:
         print(f'Processing {len(all_checkpoints)} checkpoints...')
     # pdb.set_trace()
-    for ckpt in all_checkpoints:
+    for i,ckpt in enumerate(all_checkpoints):
         epoch,step=ckpt.stem.split('-')
         epoch = epoch.split('=')[1]
         step = step.split('=')[1]
+        print(f"\n step : {step}\t {i}/{len(all_checkpoints)}\n")
         if len(all_results)>0: # loaded some results
             if (int(epoch) in all_results['epoch'].values) & (int(step) in all_results['step'].values):
                 print(f'Skipping epoch {epoch}, step {step}.')
