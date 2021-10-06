@@ -64,21 +64,13 @@ class LitBarlowBert(pl.LightningModule):
         return loss_dict['loss']
 
     def configure_optimizers(self):
-        # if self.args.dont_use_lars:
-        #     return torch.optim.AdamW(self.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)            
-        # else:
-        #     return LARS(self.parameters(), lr=self.args.lr,weight_decay=self.args.weight_decay)
+
         if self.args.dont_use_lars:
             optim = torch.optim.AdamW(self.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)    
         else:
             optim = LARS(self.parameters(), lr=self.args.lr,weight_decay=self.args.weight_decay)
         
         sched = torch.optim.lr_scheduler.OneCycleLR(optim,max_lr=self.args.lr,total_steps=self.num_training_steps,anneal_strategy='linear')
-        # sched = get_linear_schedule_with_warmup(
-        #     optimizer = optim,
-        #     num_warmup_steps = int(self.args.warmup_ratio * self.num_training_steps),
-        #     num_training_steps = self.num_training_steps
-        # )
 
         lr_scheduler_config = {
             # REQUIRED: The scheduler instance
@@ -147,7 +139,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--hidden_dropout_prob', 
                         default=0.1, type=float,
                         help='dropout for hidden layers')
-        parser.add_argument('--lambda_corr', type=float, default=0.001)
+        parser.add_argument('--lambda_corr', type=float, default=1.0)
         parser.add_argument('--lambda_sim', type=float, default=1.0)
         parser.add_argument('--sim_weight', type=float, default=0.001)               
         return parser
@@ -175,7 +167,7 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset 20mil --precision 16 --batch_size 32 --all_hidden_states --num_trainable_layers 0'.split()
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 2 --dataset 1mil --precision 16 --batch_size 32 --all_hidden_states --num_trainable_layers 3'.split()
     tmp_args_2 = "--gpus 1 --projector 2048-2048 --dataset 20mil --precision 16 --log_every_n_steps 20 --do_sim --tags frozen 2048-2048 gpus1 sim".split()    
     args = parser.parse_args()
 
