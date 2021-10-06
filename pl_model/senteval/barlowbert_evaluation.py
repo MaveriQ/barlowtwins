@@ -3,6 +3,7 @@ import sys
 sys.path.insert(0, '..')
 from barlowbert_pl import LitBarlowBert
 from transformers import BertTokenizerFast
+from transformers import logging as tf_logging
 from tqdm import tqdm
 from pathlib import Path
 from argparse import ArgumentParser
@@ -14,6 +15,8 @@ import json
 from tqdm import tqdm
 from prettytable import PrettyTable
 import pandas as pd
+
+tf_logging.set_verbosity_error()
 
 list_of_tasks = ['STS12', 'STS13', 'STS14', 'STS15', 'STS16',
                     'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'SST5', 'TREC', 'MRPC',
@@ -43,7 +46,7 @@ def args_parse():
                         default='_results')
     parser.add_argument("--task_set", type=str, 
             choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts',
+            default='sts_dev',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],
@@ -57,7 +60,7 @@ def args_parse():
                                  'SICKRelatedness', 'STSBenchmark'],
                         choices=list_of_tasks)
 
-    tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_frozen_bs1024_dropout0.1_lr1e-3_lambd1e-3_mlm0_gpus4_mean_all_fp16".split()
+    tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_trainable3_bs32_74mil_4096_2_1cycle_run2".split()
     args = parser.parse_args()
     return args
 
@@ -233,6 +236,7 @@ if __name__=='__main__':
     args = args_parse()
 
     all_checkpoints = list(Path(args.checkpoint_dir).glob('*.ckpt'))
+    all_checkpoints.sort(key=os.path.getctime)
 
     filename = args.checkpoint_dir.name+'.csv'
     if os.path.exists(filename):
@@ -246,10 +250,11 @@ if __name__=='__main__':
     else:
         print(f'Processing {len(all_checkpoints)} checkpoints...')
     # pdb.set_trace()
-    for ckpt in all_checkpoints:
+    for i,ckpt in enumerate(all_checkpoints):
         epoch,step=ckpt.stem.split('-')
         epoch = epoch.split('=')[1]
         step = step.split('=')[1]
+        print(f"\nStep {step} is {i}/{len(all_checkpoints)}\n")
         if len(all_results)>0: # loaded some results
             if (int(epoch) in all_results['epoch'].values) & (int(step) in all_results['step'].values):
                 print(f'Skipping epoch {epoch}, step {step}.')
