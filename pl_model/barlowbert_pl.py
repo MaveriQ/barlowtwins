@@ -2,7 +2,7 @@ from collections import namedtuple
 import pdb
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from transformers import CONFIG_MAPPING, BertTokenizerFast, AdamW, get_linear_schedule_with_warmup
+from transformers import CONFIG_MAPPING, BertTokenizerFast, logging
 import torch
 from argparse import ArgumentParser
 from pl_bolts.optimizers import LARS
@@ -10,6 +10,8 @@ from pl_bolts.optimizers import LARS
 import pytorch_lightning as pl
 from barlowbert_models import BarlowBert
 from barlowbert_dm import BookCorpusDataModuleForMLM, DataCollatorForBarlowBertWithMLM
+
+logging.set_verbosity_error()
 
 bert_small = {
     "hidden_size" : 512 ,
@@ -36,13 +38,16 @@ class LitBarlowBert(pl.LightningModule):
 
         loss_dict = self.model(batch)
 
-        if self.args.do_mlm:
-            self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
+        for key,val in loss_dict.items():
+            self.log(key,val)
 
-        if self.args.do_sim:
-            self.log("sim_loss",loss_dict['sim_loss'])
-            self.log("sim_ondiag",loss_dict['sim_ondiag'])
-            self.log("sim_offdiag",loss_dict['sim_offdiag'])   
+        # if self.args.do_mlm:
+        #     self.log('masked_lm_loss',self.args.mlm_weight * loss_dict['mlm_loss'])
+
+        # if self.args.do_sim:
+        #     self.log("sim_loss",loss_dict['sim_loss'])
+        #     self.log("sim_ondiag",loss_dict['sim_ondiag'])
+        #     self.log("sim_offdiag",loss_dict['sim_offdiag'])   
 
         # pdb.set_trace()
         self.log("train_loss", loss_dict['loss'])

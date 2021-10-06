@@ -15,6 +15,9 @@ import json
 from tqdm import tqdm
 from prettytable import PrettyTable
 import pandas as pd
+from transformers import logging as tf_logging
+
+tf_logging.set_verbosity_error()
 
 tf_logging.set_verbosity_error()
 
