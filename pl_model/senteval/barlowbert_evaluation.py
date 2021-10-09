@@ -257,7 +257,7 @@ if __name__=='__main__':
         epoch,step=ckpt.stem.split('-')
         epoch = epoch.split('=')[1]
         step = step.split('=')[1]
-        print(f"\nStep {step} is {i}/{len(all_checkpoints)}\n")
+        print(f"\nStep {int(step)+1} is {i+1}/{len(all_checkpoints)}\n")
         if len(all_results)>0: # loaded some results
             if (int(epoch) in all_results['epoch'].values) & (int(step) in all_results['step'].values):
                 print(f'Skipping epoch {epoch}, step {step}.')

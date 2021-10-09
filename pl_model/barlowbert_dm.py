@@ -120,6 +120,8 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
 
         print(f'loading {args.dataset} dataset..')
         corpus=None
+        if self.args.dataset=='test':
+            corpus = load_dataset('bookcorpus',split='train').select(range(1000))
         if self.args.dataset=='1mil':
             corpus = load_dataset('bookcorpus',split='train').select(range(1000000))
         elif self.args.dataset=='5mil':
@@ -136,19 +138,18 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
         self.num_rows = self.dataset.num_rows # 74,004,228
 
     def setup(self, stage: Optional[str] = None):
-        train_size = int(0.8 * self.num_rows) # about 80%
-        val_size = int(0.1 * self.num_rows) # about 10%
-        test_size = self.num_rows - (train_size + val_size)
+        train_size = int(0.9 * self.num_rows)
+        val_size = self.num_rows - train_size
 
-        self.corpus_train, self.corpus_val, self.corpus_test = random_split(self.dataset, [train_size, val_size,test_size])
+        self.corpus_train, self.corpus_val = random_split(self.dataset, [train_size, val_size])
 
     def train_dataloader(self):
         # if self.args.do_mlm:
-            return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
+        return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
         # else:
             # return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
     # def val_dataloader(self):
-    #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)
+    #     return DataLoader(self.corpus_val, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
 
     # def test_dataloader(self):
     #     return DataLoader(self.corpus_test, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True)

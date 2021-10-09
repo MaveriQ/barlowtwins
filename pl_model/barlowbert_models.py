@@ -472,10 +472,41 @@ class BarlowBert(nn.Module):
 
         projection1 = output1['sentence_embedding']
         projection2 = output2['sentence_embedding']
-        c_out = (projection1.transpose(0,1) @ projection2)
-        c_out.div_(self.args.batch_size)
 
-        corr_loss = get_diag_loss(loss_dict,c_out,self.args.lambda_corr,'corr')
+        if self.args.skip_barlow:
+            loss=0.0
+        else:
+            c_out = (projection1.transpose(0,1) @ projection2)
+            c_out.div_(self.args.batch_size)
+            corr_loss = get_diag_loss(loss_dict,c_out,self.args.lambda_corr,'corr')
+            loss = corr_loss
+            loss_dict['corr_loss'] = corr_loss
+
+        dim = projection1.shape[1]
+        diag = torch.eye(dim, device=projection1.device)
+
+        if self.args.cov_weight != 0:
+            z1m = projection1 - projection1.mean(dim=0)
+            z2m = projection2 - projection2.mean(dim=0)
+            cov_z1 = (z1m.T @ z1m) / (self.args.batch_size - 1)
+            cov_z2 = (z2m.T @ z2m) / (self.args.batch_size - 1)
+            cov_loss = cov_z1[~diag.bool()].pow_(2).mean() / dim + cov_z2[~diag.bool()].pow_(2).mean() / dim #loss from off_diag entries
+            loss = loss + self.args.cov_weight * cov_loss
+            loss_dict['cov_loss'] = cov_loss
+        
+        if self.args.var_weight != 0:
+            eps = 1e-4
+            std_z1 = torch.sqrt(projection1.var(dim=0) + eps)
+            std_z2 = torch.sqrt(projection2.var(dim=0) + eps)
+            var_loss = torch.mean(F.relu(1 - std_z1)) + torch.mean(F.relu(1 - std_z2))
+            loss = loss + self.args.var_weight * var_loss
+            loss_dict['var_loss'] = var_loss
+
+        if self.args.mse_weight != 0:
+            mse_loss = F.mse_loss(projection1, projection2)
+            loss = loss + self.args.mse_weight * mse_loss
+            loss_dict['mse_loss'] = mse_loss
+
         # pdb.set_trace()
         if self.args.do_sim:
             c_in = CosineSimilarity(projection1,projection2)
@@ -484,11 +515,12 @@ class BarlowBert(nn.Module):
             sim_loss = get_diag_loss(loss_dict,c_in,self.args.lambda_sim,'sim')
             loss = sim_loss + self.args.sim_weight * corr_loss
             loss_dict['sim_loss'] = sim_loss
-        else:
-            loss = corr_loss
-        loss_dict['corr_loss'] = corr_loss
+        # else:
+        #     loss = corr_loss
+        # loss_dict['corr_loss'] = corr_loss
 
-        if output1.get('prediction_scores') is not None:
+        if self.args.mlm_weight > 0:
+            assert output1.get('prediction_scores') is not None
             prediction_scores = torch.cat([output1['prediction_scores'],output2['prediction_scores']],axis=1)
             mlm_labels = torch.cat([y1['mlm_labels'],y2['mlm_labels']],axis=1)
             mlm_labels = mlm_labels.view(-1, mlm_labels.size(-1))
@@ -498,113 +530,6 @@ class BarlowBert(nn.Module):
 
         loss_dict['loss'] = loss
         return loss_dict        
-
-class LARS2(optim.Optimizer):
-    def __init__(self, params, lr, weight_decay=0, momentum=0.9, eta=0.001,
-                 weight_decay_filter=False, lars_adaptation_filter=False):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        eta=eta, weight_decay_filter=weight_decay_filter,
-                        lars_adaptation_filter=lars_adaptation_filter)
-        super().__init__(params, defaults)
-
-
-    def exclude_bias_and_norm(self, p):
-        return p.ndim == 1
-
-    @torch.no_grad()
-    def step(self,closure=None):
-
-        loss=None
-
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for g in self.param_groups:
-            for p in g['params']:
-                dp = p.grad
-
-                if dp is None:
-                    continue
-
-                if not g['weight_decay_filter'] or not self.exclude_bias_and_norm(p):
-                    print(p.shape)
-                    dp = dp.add(p, alpha=g['weight_decay'])
-
-                if not g['lars_adaptation_filter'] or not self.exclude_bias_and_norm(p):
-                    param_norm = torch.norm(p)
-                    update_norm = torch.norm(dp)
-                    one = torch.ones_like(param_norm)
-                    q = torch.where(param_norm > 0.,
-                                    torch.where(update_norm > 0,
-                                                (g['eta'] * param_norm / update_norm), one), one)
-                    dp = dp.mul(q)
-
-                param_state = self.state[p]
-                if 'mu' not in param_state:
-                    param_state['mu'] = torch.zeros_like(p)
-                mu = param_state['mu']
-                mu.mul_(g['momentum']).add_(dp)
-
-                p.add_(mu, alpha=-g['lr'])
-
-        return loss
-
-class LARS(optim.Optimizer):
-    def __init__(self, params, lr, weight_decay=0, momentum=0.9, eta=0.001,
-                 weight_decay_filter=None, lars_adaptation_filter=None):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        eta=eta, weight_decay_filter=weight_decay_filter,
-                        lars_adaptation_filter=lars_adaptation_filter)
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self):
-        for g in self.param_groups:
-            for p in g['params']:
-                dp = p.grad
-
-                if dp is None:
-                    continue
-
-                if g['weight_decay_filter'] is None or not g['weight_decay_filter'](p):
-                    dp = dp.add(p, alpha=g['weight_decay'])
-
-                if g['lars_adaptation_filter'] is None or not g['lars_adaptation_filter'](p):
-                    param_norm = torch.norm(p)
-                    update_norm = torch.norm(dp)
-                    one = torch.ones_like(param_norm)
-                    q = torch.where(param_norm > 0.,
-                                    torch.where(update_norm > 0,
-                                                (g['eta'] * param_norm / update_norm), one), one)
-                    dp = dp.mul(q)
-
-                param_state = self.state[p]
-                if 'mu' not in param_state:
-                    param_state['mu'] = torch.zeros_like(p)
-                mu = param_state['mu']
-                mu.mul_(g['momentum']).add_(dp)
-
-                p.add_(mu, alpha=-g['lr'])
-
-def exclude_bias_and_norm(p):
-    return p.ndim == 1
-    
-def adjust_learning_rate(args, optimizer, loader, step):
-    max_steps = args.epochs * len(loader)
-    warmup_steps = 10 * len(loader)
-    base_lr = args.batch_size / 256
-    if step < warmup_steps:
-        lr = base_lr * step / warmup_steps
-    else:
-        step -= warmup_steps
-        max_steps -= warmup_steps
-        q = 0.5 * (1 + math.cos(math.pi * step / max_steps))
-        end_lr = base_lr * 0.001
-        lr = base_lr * q + end_lr * (1 - q)
-    optimizer.param_groups[0]['lr'] = lr * args.learning_rate_weights
-    optimizer.param_groups[1]['lr'] = lr * args.learning_rate_biases
-
 
 def main():
     tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
