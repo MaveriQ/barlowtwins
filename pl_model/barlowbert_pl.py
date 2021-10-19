@@ -207,7 +207,7 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 2 --dataset 1mil --precision 16 --batch_size 32 --all_hidden_states --num_trainable_layers 3'.split()
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset test --precision 16 --batch_size 8 --num_trainable_layers 3'.split()
     vicreg_args = "--gpus 2 --lr 1e-3 --precision 32 --batch_size 32 --dataset test --projector 4096-4096 --num_trainable_layers 3 --max_epochs 1 --mse_weight 1.0 --cov_weight 1.0 --var_weight 1.0".split()    
     args = parser.parse_args()
 
@@ -245,7 +245,7 @@ def main():
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),
                                     # filename='_'.join(args.tags),
-                                    every_n_train_steps=2000,
+                                    every_n_train_steps=4000,
                                     save_top_k=-1,
                                     # train_time_interval=timedelta(hours=4)
                                     )

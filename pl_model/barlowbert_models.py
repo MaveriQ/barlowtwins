@@ -132,19 +132,12 @@ class Pooler(torch.nn.Module):
 
     def forward(self, attention_mask,
                     bert_output=None,
-                    nlpmixer_output=None,
                     ):
 
-        if bert_output is not None:
-            if self.all_hidden_states:
-                token_embeddings = torch.mean(torch.stack(bert_output.hidden_states),0)
-            else:
-                token_embeddings = bert_output.last_hidden_state
-        elif nlpmixer_output is not None:
-            token_embeddings = nlpmixer_output['token_embeddings']
+        if self.all_hidden_states:
+            token_embeddings = torch.mean(torch.stack(bert_output.hidden_states),0)
         else:
-            print('Error: Either of bert_output or nlpmixer_output must be set')
-            sys.exit(1)            
+            token_embeddings = bert_output.last_hidden_state        
 
         # pdb.set_trace()
         ## Pooling strategy
@@ -195,118 +188,39 @@ class Pooler(torch.nn.Module):
 
         return Pooler(**config)
 
+
+class GeneralParameterizedPooler(torch.nn.Module):
+    def __init__(self,num_layers,seq_len,hidden_dim,batch_size):#args,config):
+        super().__init__()
+        
+        self.num_layers = num_layers
+        self.batch_size = batch_size
+        self.hidden_dim = hidden_dim
+        self.seq_len = seq_len
+        self.seq_weight_parameter = torch.nn.ParameterList([torch.nn.Parameter(torch.rand(seq_len)-0.5) for j in range(self.num_layers)]) # random numbers between [-0.5,0.5]
+        self.layer_weight_parameter = torch.nn.Parameter(torch.rand(num_layers)-0.5) # random numbers between [-0.5,0.5]
+        
+    def forward(self,token_embeddings,attention_mask):
+        assert len(token_embeddings)==self.num_layers, 'Number of embeddings must be the same as number of layers'
+        output = []
+
+        for i in range(self.num_layers):
+            hidden_state = token_embeddings[i]
+            hidden_state_masked = hidden_state * attention_mask.unsqueeze(2).expand_as(hidden_state)
+            weight_parameter = self.seq_weight_parameter[i].expand([self.batch_size,1,self.seq_len])
+            out = torch.bmm(weight_parameter,hidden_state_masked) # batched dot product
+            output.append(out.squeeze())
+            
+        layer_sentence_embeddings = torch.stack(output).transpose(0,1) # swap batch and layer_dimension
+        
+        model_sentence_embedding = torch.bmm(self.layer_weight_parameter.expand(self.batch_size,1,self.num_layers),layer_sentence_embeddings).squeeze()
+        
+        return {'sentence_embedding' : model_sentence_embedding}
+
+    def get_sentence_embedding_dimension(self):
+        return self.hidden_dim
+
 class SentenceBertWithPooler(BertPreTrainedModel):
-    
-    def _init_weights(self, module):
-        """Initialize the weights"""
-        # pdb.set_trace()
-        if isinstance(module,Pooler) or isinstance(module,Projector): # init weights only for non Bert modules as we are using pretrained weights for rest.
-            if isinstance(module, nn.Linear):
-                # Slightly different from the TF version which uses truncated_normal for initialization
-                # cf https://github.com/pytorch/pytorch/pull/5617
-                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-                if module.bias is not None:
-                    module.bias.data.zero_()
-            elif isinstance(module, nn.Embedding):
-                module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-                if module.padding_idx is not None:
-                    module.weight.data[module.padding_idx].zero_()
-            elif isinstance(module, nn.LayerNorm):
-                module.bias.data.zero_()
-                module.weight.data.fill_(1.0)
-            
-    def __init__(self, config,args):
-        super().__init__(config)
-
-        self.config = config
-        self.args = args
-            
-        self.bert = BertModel(self.config, add_pooling_layer=False).from_pretrained('bert-base-uncased')
-
-        if self.args.do_mlm:
-            self.lm_head = BertLMPredictionHead(config)           
-            for params in self.bert.pooler.parameters():
-                params.requires_grad=False
-        else:
-            for params in self.bert.parameters():
-                params.requires_grad=False            
-
-        self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
-                            pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
-                            pooling_mode_max_tokens=False,#self.args.max_pooling,
-                            pooling_mode_mean_tokens=True,#self.args.mean_pooling,
-                            mean_cat='cat',
-                            all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
-
-        sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
-        layers = []
-        for i in range(len(sizes) - 2):
-            layers.append(Projector(config,sizes[i], sizes[i + 1]))
-        layers.append(Projector(config,sizes[-2], sizes[-1]))
-        self.projector = nn.Sequential(*layers)
-        self.bn = nn.BatchNorm1d(sizes[-1], affine=False)
-        
-        self.apply(self._init_weights)
-        
-    def forward(
-        self,
-        input_ids=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        encoder_hidden_states=None,
-        encoder_attention_mask=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-        mlm_input_ids=None,
-        mlm_labels=None,
-    ):
-        
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            encoder_hidden_states=encoder_hidden_states,
-            encoder_attention_mask=encoder_attention_mask,
-            output_attentions=output_attentions,
-            output_hidden_states=self.config.output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        if self.args.do_mlm:
-            mlm_input_ids = mlm_input_ids.view((-1, mlm_input_ids.size(-1)))
-            mlm_outputs = self.bert(
-                mlm_input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-                output_attentions=output_attentions,
-                output_hidden_states=False, #True if cls.model_args.pooler_type in ['avg_top2', 'avg_first_last'] else False,
-                return_dict=True,
-            )
-            prediction_scores = self.lm_head(mlm_outputs.last_hidden_state)
-        # pdb.set_trace()
-        pooled = self.pooler(bert_output = outputs,attention_mask=attention_mask)
-        
-        projection = self.projector(pooled)
-
-        if self.args.do_mlm:
-            return {'sentence_embedding':projection,
-                    'prediction_scores':prediction_scores}
-        else:        
-            return {'sentence_embedding':projection}
-
-class SentenceBertWithNLPMixer(BertPreTrainedModel):
     
     def _init_weights(self, module):
         """Initialize the weights"""
@@ -325,7 +239,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
             module.bias.data.zero_()
             module.weight.data.fill_(1.0)
 
-    def _process_bert_encoder(self): #Processing BERT to make only last n layers trainable.
+    def _process_bert_encoder(self): # Processing BERT to make only last n layers trainable.
 
         self.bert.train() # by default a pretrained model is in eval mode but requires_grad is set to True
 
@@ -342,24 +256,22 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
 
         self.config = config
         self.args = args
-  
-        # if self.args.dont_use_bert:
-        #     self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=True)
-        # else:
 
         if self.args.do_mlm:
             self.lm_head = BertLMPredictionHead(config)
             assert self.num_trainable_layers > 0, "number of trainable layers should be > 0 for mlm"           
-        
-        if self.args.num_mixer_layers>0:
-            self.nlpmixer = NLPMixer(self.config,num_layers=self.args.num_mixer_layers,do_embed=False)
 
-        self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
-                            pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
-                            pooling_mode_max_tokens=False,#self.args.max_pooling,
-                            pooling_mode_mean_tokens=True,#self.args.mean_pooling,
-                            mean_cat='cat',
-                            all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
+        # self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
+        #                     pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
+        #                     pooling_mode_max_tokens=False,#self.args.max_pooling,
+        #                     pooling_mode_mean_tokens=True,#self.args.mean_pooling,
+        #                     mean_cat='cat',
+        #                     all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
+        
+        self.pooler = GeneralParameterizedPooler(self.args.num_trainable_layers,
+                                                self.args.seq_len,
+                                                self.config.hidden_size,
+                                                self.args.batch_size)
 
         sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
         layers = []
@@ -393,13 +305,7 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
         mlm_labels=None,
     ):
         output = {}
-        # return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        # if self.args.dont_use_bert:
-        #     mixer_output = self.nlpmixer(attention_mask=attention_mask,
-        #                                 input_ids=input_ids,
-        #                                 token_type_ids=token_type_ids,
-        #                                 position_ids=position_ids)
-        # else:
+
         bert_output = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -413,14 +319,10 @@ class SentenceBertWithNLPMixer(BertPreTrainedModel):
             output_hidden_states=self.config.output_hidden_states,
             return_dict=return_dict,
         )
-        if self.args.num_mixer_layers>0:
-            mixer_output = self.nlpmixer(bert_output=bert_output,
-                                    attention_mask=attention_mask)
-            output['token_embeddings'] = mixer_output['token_embeddings']
-            pooled = self.pooler(nlpmixer_output=mixer_output,attention_mask=attention_mask)
-        else:
-            pooled = self.pooler(bert_output=bert_output,attention_mask=attention_mask)
-            output['token_embeddings'] = pooled['token_embeddings']
+
+        # pooled = self.pooler(bert_output=bert_output,attention_mask=attention_mask)
+        pooled = self.pooler(token_embeddings=bert_output.hidden_states[-self.args.num_trainable_layers:],attention_mask=attention_mask)
+        # output['token_embeddings'] = pooled['token_embeddings']
 
         projected = self.projector(pooled['sentence_embedding'])
         output['sentence_embedding'] = self.bn(projected)
@@ -452,21 +354,15 @@ class BarlowBert(nn.Module):
 
         self.config = config
         self.args = args
-        self.model = SentenceBertWithNLPMixer(self.config,self.args)
+        self.model = SentenceBertWithPooler(self.config,self.args)
         self.loss_fct = torch.nn.CrossEntropyLoss()
-        # self.mlm_weight =torch.nn.Pa
 
     def forward(self,x):
 
         loss_dict = {}
 
-        # if self.args.do_mlm:
         y1, y2 = x
-        # else: 
-        #     y1 = x
-        #     y2 = deepcopy(x)
-            
-        # pdb.set_trace()
+
         output1 = self.model(**y1)
         output2 = self.model(**y2)
 
@@ -544,7 +440,7 @@ def main():
     config.output_hidden_states = True
     Args = namedtuple('Args',['do_mlm', 'do_sim','batch_size', 'lambda_corr'])
     args = Args(False, False, 4, 0.1)
-    model_nlp = SentenceBertWithNLPMixer(config,args)
+    model_nlp = SentenceBertWithPooler(config,args)
     model_bb = BarlowBert(config,args)
 
     out = model_bb(batch)
