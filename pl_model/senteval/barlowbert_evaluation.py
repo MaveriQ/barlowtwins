@@ -1,6 +1,7 @@
 import logging
-import sys
-sys.path.insert(0, '..')
+import sys, os
+# sys.path.insert(0,os.path.join(os.path.abspath('.'),'pl_model'))
+sys.path.insert(0,'../')
 from barlowbert_pl import LitBarlowBert
 from transformers import BertTokenizerFast
 from transformers import logging as tf_logging
@@ -59,11 +60,11 @@ def args_parse():
                         nargs='+',
                         type=str,
                         default=['STS12', 'STS13', 'STS14', 'STS15', 'STS16',
-                                 'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC',
+                                 'MR', 'CR', 'MPQA', 'SUBJ', 'SST2', 'TREC', 'MRPC' ,
                                  'SICKRelatedness', 'STSBenchmark'],
                         choices=list_of_tasks)
 
-    tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_trainable3_bs32_74mil_4096_2_1cycle_run2".split()
+    tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_conv1dpooler_trainable3_bs32_5mil_4096_2_skipsched/".split()
     args = parser.parse_args()
     return args
 

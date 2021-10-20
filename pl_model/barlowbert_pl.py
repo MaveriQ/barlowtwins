@@ -126,7 +126,7 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--mse_weight', type=float, default=0.0)
         parser.add_argument('--warmup_ratio', type=float, default=0.1)
         parser.add_argument('--num_mixer_layers', type=int, default=0)
-        parser.add_argument('--num_trainable_layers', type=int, default=6)
+        parser.add_argument('--num_trainable_layers', type=int, default=3)
         parser.add_argument('--bert_pooler', type=bool, default=False)
         parser.add_argument('--max_pooling', type=bool, default=False)
         parser.add_argument('--mean_pooling', type=bool, default=True)
@@ -213,7 +213,7 @@ def args_parse():
 
     args.tags.insert(0, args.exp_name)
     args.accelerator = 'ddp'
-    # args.precision = 16
+    args.precision = 16
     args.benchmark = True
 
     return args

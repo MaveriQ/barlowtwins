@@ -190,13 +190,14 @@ class Pooler(torch.nn.Module):
 
 
 class GeneralParameterizedPooler(torch.nn.Module):
-    def __init__(self,num_layers,seq_len,hidden_dim,batch_size):#args,config):
+    def __init__(self,num_layers,seq_len,hidden_dim,already_masked=True):
         super().__init__()
         
         self.num_layers = num_layers
-        self.batch_size = batch_size
         self.hidden_dim = hidden_dim
+        self.already_masked = already_masked
         self.seq_len = seq_len
+        
         self.seq_weight_parameter = torch.nn.ParameterList([torch.nn.Parameter(torch.rand(seq_len)-0.5) for j in range(self.num_layers)]) # random numbers between [-0.5,0.5]
         self.layer_weight_parameter = torch.nn.Parameter(torch.rand(num_layers)-0.5) # random numbers between [-0.5,0.5]
         
@@ -204,21 +205,58 @@ class GeneralParameterizedPooler(torch.nn.Module):
         assert len(token_embeddings)==self.num_layers, 'Number of embeddings must be the same as number of layers'
         output = []
 
+        batch_size = token_embeddings[0].shape[0]
+
         for i in range(self.num_layers):
             hidden_state = token_embeddings[i]
-            hidden_state_masked = hidden_state * attention_mask.unsqueeze(2).expand_as(hidden_state)
-            weight_parameter = self.seq_weight_parameter[i].expand([self.batch_size,1,self.seq_len])
+            if self.already_masked:
+                hidden_state_masked = hidden_state
+            else:
+                hidden_state_masked = hidden_state * attention_mask.unsqueeze(2).expand_as(hidden_state)
+            weight_parameter = self.seq_weight_parameter[i].expand([batch_size,1,self.seq_len])
             out = torch.bmm(weight_parameter,hidden_state_masked) # batched dot product
             output.append(out.squeeze())
             
         layer_sentence_embeddings = torch.stack(output).transpose(0,1) # swap batch and layer_dimension
         
-        model_sentence_embedding = torch.bmm(self.layer_weight_parameter.expand(self.batch_size,1,self.num_layers),layer_sentence_embeddings).squeeze()
+        model_sentence_embedding = torch.bmm(self.layer_weight_parameter.expand(batch_size,1,self.num_layers),layer_sentence_embeddings).squeeze()
         
         return {'sentence_embedding' : model_sentence_embedding}
 
     def get_sentence_embedding_dimension(self):
         return self.hidden_dim
+
+class Conv1DLayers(torch.nn.Module):
+    def __init__(self,num_trainable_layers,seq_len,channels_list):#args,config):
+        super().__init__()
+        
+        self.seq_len = seq_len
+        self.out_channels = channels_list
+        self.num_trainable_layers = num_trainable_layers
+        
+        in_channels = num_trainable_layers * seq_len
+        out_channels = channels_list[0]
+        self.layer1 = torch.nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+        
+        in_channels = out_channels
+        out_channels = channels_list[1]
+        self.layer2 = torch.nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=1)
+        
+    def forward(self,bert_output,attention_mask):
+        
+        attn_mask = attention_mask.unsqueeze(2).expand_as(bert_output[0])
+        selected_layers = bert_output.hidden_states[-self.num_trainable_layers:]
+        attended_bert_output = []
+        
+        for layer in selected_layers:
+            attended_bert_output.append(layer*attn_mask)
+            
+        stacked = torch.cat(attended_bert_output,dim=1)
+                
+        out_layer1 = self.layer1(stacked)
+        out_layer2 = self.layer2(torch.nn.ReLU()(out_layer1))
+        
+        return out_layer2
 
 class SentenceBertWithPooler(BertPreTrainedModel):
     
@@ -267,16 +305,21 @@ class SentenceBertWithPooler(BertPreTrainedModel):
         #                     pooling_mode_mean_tokens=True,#self.args.mean_pooling,
         #                     mean_cat='cat',
         #                     all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
-        
+
+        # self.conv = Conv1DLayers(self.args.num_trainable_layers, self.args.seq_len, [512,512])
+
         self.pooler = GeneralParameterizedPooler(self.args.num_trainable_layers,
                                                 self.args.seq_len,
                                                 self.config.hidden_size,
-                                                self.args.batch_size)
+                                                already_masked=False
+                                                )
 
         sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
+
         layers = []
         for i in range(len(sizes) - 2):
             layers.append(Projector(config,sizes[i], sizes[i + 1]))
+
         layers.append(Projector(config,sizes[-2], sizes[-1]))
         self.projector = nn.Sequential(*layers)
         
@@ -320,7 +363,9 @@ class SentenceBertWithPooler(BertPreTrainedModel):
             return_dict=return_dict,
         )
 
-        # pooled = self.pooler(bert_output=bert_output,attention_mask=attention_mask)
+        # conved_output = self.conv(bert_output,attention_mask)
+        # pooled = self.pooler(token_embeddings=[conved_output],attention_mask=attention_mask)
+
         pooled = self.pooler(token_embeddings=bert_output.hidden_states[-self.args.num_trainable_layers:],attention_mask=attention_mask)
         # output['token_embeddings'] = pooled['token_embeddings']
 

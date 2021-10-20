@@ -133,7 +133,8 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
                 self.dataset = load_from_disk(self.args.datadir/f'bookcorpus_{args.dataset}_128')
 
         if corpus is not None:
-            self.dataset = corpus.map(lambda e: self.tokenizer(e['text'],return_token_type_ids=False,truncation=True,padding='max_length',max_length=self.args.seq_len),remove_columns=['text'],num_proc=16)
+            self.dataset = corpus.map(lambda e: self.tokenizer(e['text'],return_token_type_ids=False,truncation=True,padding='max_length',max_length=self.args.seq_len),
+                                    remove_columns=['text'],num_proc=16)
         self.dataset.set_format('torch')
         self.num_rows = self.dataset.num_rows # 74,004,228
 
@@ -145,7 +146,7 @@ class BookCorpusDataModuleForMLM(pl.LightningDataModule):
 
     def train_dataloader(self):
         # if self.args.do_mlm:
-        return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers)
+        return DataLoader(self.corpus_train, batch_size=self.args.batch_size,collate_fn=self.collator,pin_memory=True,num_workers=self.args.workers,drop_last=True)
         # else:
             # return DataLoader(self.corpus_train, batch_size=self.args.batch_size,pin_memory=True,num_workers=self.args.workers)
     # def val_dataloader(self):
