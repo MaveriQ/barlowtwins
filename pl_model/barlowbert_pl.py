@@ -56,7 +56,7 @@ class LitBarlowBert(pl.LightningModule):
 
     def configure_optimizers(self):
 
-        if self.args.dont_use_lars:
+        if self.args.skip_lars:
             optim = torch.optim.AdamW(self.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)    
         else:
             optim = LARS(self.parameters(), lr=self.args.lr,weight_decay=self.args.weight_decay)
@@ -116,10 +116,12 @@ class LitBarlowBert(pl.LightningModule):
         # parser.add_argument('--all_hidden_states', action='store_true') made it default
         parser.add_argument('--do_mlm', action='store_true')
         parser.add_argument('--do_sim', action='store_true')
+        parser.add_argument('--use_1dconv', action='store_true')
+        parser.add_argument('--use_parampooler', action='store_true')
         parser.add_argument('--skip_barlow', action='store_true')
         parser.add_argument('--skip_scheduler', action='store_true')
-        parser.add_argument('--dont_use_bert', action='store_true')
-        parser.add_argument('--dont_use_lars', action='store_true')
+        # parser.add_argument('--dont_use_bert', action='store_true')
+        parser.add_argument('--skip_lars', action='store_true')
         parser.add_argument('--mlm_weight', type=float, default=0.0)
         parser.add_argument('--cov_weight', type=float, default=0.0)
         parser.add_argument('--var_weight', type=float, default=0.0)
@@ -131,7 +133,8 @@ class LitBarlowBert(pl.LightningModule):
         parser.add_argument('--max_pooling', type=bool, default=False)
         parser.add_argument('--mean_pooling', type=bool, default=True)
         parser.add_argument('--cls_pooling', type=bool, default=False)
-        parser.add_argument('--projector', default='768', type=str, help='projector MLP')
+        parser.add_argument('--projector', default='768-768', type=str, help='projector MLP')
+        parser.add_argument('--conv_layers', default='512-512', type=str, help='projector MLP')
         parser.add_argument('--pool_type', type=str,  default='cat')
         parser.add_argument('--hidden_dropout_prob', default=0.1, type=float, help='dropout for hidden layers')
         parser.add_argument('--lambda_corr', type=float, default=1.0)
@@ -207,7 +210,7 @@ def args_parse():
     parser = BookCorpusDataModuleForMLM.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
 
-    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset test --precision 16 --batch_size 8 --num_trainable_layers 3'.split()
+    tmp_args = '--fast_dev_run True --exp_name bert --gpus 1 --dataset test --precision 16 --batch_size 8 '.split() #  --use_parampooler
     vicreg_args = "--gpus 2 --lr 1e-3 --precision 32 --batch_size 32 --dataset test --projector 4096-4096 --num_trainable_layers 3 --max_epochs 1 --mse_weight 1.0 --cov_weight 1.0 --var_weight 1.0".split()    
     args = parser.parse_args()
 
@@ -215,6 +218,7 @@ def args_parse():
     args.accelerator = 'ddp'
     args.precision = 16
     args.benchmark = True
+    args.max_epochs = 1
 
     return args
 
@@ -240,7 +244,7 @@ def main():
     tb_logger = TensorBoardLogger(
                                     save_dir=args.datadir,
                                     version='_'.join(args.tags),
-                                    name='lightning_tb_logs_vicreg',
+                                    name='lightning_tb_logs_foxtrot',
                                     )
 
     ckpt_callback = ModelCheckpoint(dirpath=args.datadir/'checkpoint/'/'_'.join(args.tags),

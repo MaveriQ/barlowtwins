@@ -64,6 +64,37 @@ class Projector(nn.Module):
         hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
 
+
+class MeanPooler(torch.nn.Module):
+    def __init__(self,
+                seq_len):
+        super().__init__()
+
+        self.seq_len = seq_len
+
+    def forward(self, token_embeddings, 
+                attention_mask       
+                ):
+
+        if self.already_masked: # already had conv layer before
+            input_mask_expanded = torch.ones_like(token_embeddings)
+        else:
+            token_embeddings = torch.mean(torch.stack(token_embeddings),0)
+            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+
+        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+
+        sum_mask = input_mask_expanded.sum(1)
+
+        sum_mask = torch.clamp(sum_mask, min=1e-9)
+
+        output_vector = sum_embeddings / sum_mask
+
+        return {'sentence_embedding':output_vector,
+                'token_embeddings':token_embeddings}
+
+    def get_sentence_embedding_dimension(self):
+        return self.pooling_output_dimension
 class Pooler(torch.nn.Module):
     """Performs pooling (max or mean) on the token embeddings.
     Using pooling, it generates from a variable sized sentence a fixed sized sentence embedding. This layer also allows to use the CLS token if it is returned by the underlying word embedding model.
@@ -77,17 +108,15 @@ class Pooler(torch.nn.Module):
     """
     def __init__(self,
                  word_embedding_dimension: int,
-                 all_hidden_states: bool = True,
                  pooling_mode: str = None,
                  pooling_mode_cls_token: bool = False,
                  pooling_mode_max_tokens: bool = False,
                  pooling_mode_mean_tokens: bool = True,
                  pooling_mode_mean_sqrt_len_tokens: bool = False,
-                 mean_cat: str = 'cat'
+                 mean_cat: str = 'cat',
+                 already_masked = True
                  ):
         super(Pooler, self).__init__()
-
-        self.config_keys = ['word_embedding_dimension',  'pooling_mode_cls_token', 'pooling_mode_mean_tokens', 'pooling_mode_max_tokens', 'pooling_mode_mean_sqrt_len_tokens']
 
         if pooling_mode is not None:        #Set pooling mode by string
             pooling_mode = pooling_mode.lower()
@@ -96,13 +125,13 @@ class Pooler(torch.nn.Module):
             pooling_mode_max_tokens = (pooling_mode == 'max')
             pooling_mode_mean_tokens = (pooling_mode == 'mean')
 
-        self.all_hidden_states = all_hidden_states
         self.word_embedding_dimension = word_embedding_dimension
         self.pooling_mode_cls_token = pooling_mode_cls_token
         self.pooling_mode_mean_tokens = pooling_mode_mean_tokens
         self.pooling_mode_max_tokens = pooling_mode_max_tokens
         self.pooling_mode_mean_sqrt_len_tokens = pooling_mode_mean_sqrt_len_tokens
         self.pool_method = mean_cat
+        self.already_masked = already_masked
 
         pooling_mode_multiplier = sum([pooling_mode_cls_token, pooling_mode_max_tokens, pooling_mode_mean_tokens, pooling_mode_mean_sqrt_len_tokens])
         if self.pool_method=='cat':
@@ -111,47 +140,35 @@ class Pooler(torch.nn.Module):
             self.pooling_output_dimension = word_embedding_dimension
 
 
-    def __repr__(self):
-        return "Pooling({})".format(self.get_config_dict())
+    def forward(self, token_embeddings, 
+                attention_mask       
+                ):
 
-    def get_pooling_mode_str(self) -> str:
-        """
-        Returns the pooling mode as string
-        """
-        modes = []
-        if self.pooling_mode_cls_token:
-            modes.append('cls')
-        if self.pooling_mode_mean_tokens:
-            modes.append('mean')
-        if self.pooling_mode_max_tokens:
-            modes.append('max')
-        if self.pooling_mode_mean_sqrt_len_tokens:
-            modes.append('mean_sqrt_len_tokens')
-
-        return "+".join(modes)
-
-    def forward(self, attention_mask,
-                    bert_output=None,
-                    ):
-
-        if self.all_hidden_states:
-            token_embeddings = torch.mean(torch.stack(bert_output.hidden_states),0)
-        else:
-            token_embeddings = bert_output.last_hidden_state        
+        # if self.all_hidden_states:
+        #     token_embeddings = torch.mean(torch.stack(bert_output.hidden_states),0)
+        # else:
+        #     token_embeddings = bert_output.last_hidden_state        
 
         # pdb.set_trace()
         ## Pooling strategy
+
+        if self.already_masked: # already had conv layer before
+            input_mask_expanded = torch.ones_like(token_embeddings)
+        else:
+            token_embeddings = torch.mean(torch.stack(token_embeddings),0)
+            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+
         output_vectors = []
         if self.pooling_mode_cls_token:
             cls_token = token_embeddings[:,0]
             output_vectors.append(cls_token)
         if self.pooling_mode_max_tokens:
-            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+            # input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
             token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
             max_over_time = torch.max(token_embeddings, 1)[0]
             output_vectors.append(max_over_time)
         if self.pooling_mode_mean_tokens or self.pooling_mode_mean_sqrt_len_tokens:
-            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+            # input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
             sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
 
             sum_mask = input_mask_expanded.sum(1)
@@ -174,20 +191,6 @@ class Pooler(torch.nn.Module):
     def get_sentence_embedding_dimension(self):
         return self.pooling_output_dimension
 
-    def get_config_dict(self):
-        return {key: self.__dict__[key] for key in self.config_keys}
-
-    def save(self, output_path):
-        with open(os.path.join(output_path, 'config.json'), 'w') as fOut:
-            json.dump(self.get_config_dict(), fOut, indent=2)
-
-    @staticmethod
-    def load(input_path):
-        with open(os.path.join(input_path, 'config.json')) as fIn:
-            config = json.load(fIn)
-
-        return Pooler(**config)
-
 
 class GeneralParameterizedPooler(torch.nn.Module):
     def __init__(self,num_layers,seq_len,hidden_dim,already_masked=True):
@@ -201,7 +204,14 @@ class GeneralParameterizedPooler(torch.nn.Module):
         self.seq_weight_parameter = torch.nn.ParameterList([torch.nn.Parameter(torch.rand(seq_len)-0.5) for j in range(self.num_layers)]) # random numbers between [-0.5,0.5]
         self.layer_weight_parameter = torch.nn.Parameter(torch.rand(num_layers)-0.5) # random numbers between [-0.5,0.5]
         
-    def forward(self,token_embeddings,attention_mask):
+    def forward(self,
+                token_embeddings,
+                attention_mask):
+
+
+        if self.already_masked: # already had conv layer before
+            token_embeddings = [token_embeddings]
+
         assert len(token_embeddings)==self.num_layers, 'Number of embeddings must be the same as number of layers'
         output = []
 
@@ -221,7 +231,8 @@ class GeneralParameterizedPooler(torch.nn.Module):
         
         model_sentence_embedding = torch.bmm(self.layer_weight_parameter.expand(batch_size,1,self.num_layers),layer_sentence_embeddings).squeeze()
         
-        return {'sentence_embedding' : model_sentence_embedding}
+        return {'sentence_embedding' : model_sentence_embedding,
+                'token_embeddings': token_embeddings}
 
     def get_sentence_embedding_dimension(self):
         return self.hidden_dim
@@ -246,12 +257,12 @@ class Conv1DLayers(torch.nn.Module):
         
         attn_mask = attention_mask.unsqueeze(2).expand_as(bert_output[0])
         selected_layers = bert_output.hidden_states[-self.num_trainable_layers:]
-        attended_bert_output = []
+        masked_bert_output = []
         
         for layer in selected_layers:
-            attended_bert_output.append(layer*attn_mask)
+            masked_bert_output.append(layer*attn_mask)
             
-        stacked = torch.cat(attended_bert_output,dim=1)
+        stacked = torch.cat(masked_bert_output,dim=1)
                 
         out_layer1 = self.layer1(stacked)
         out_layer2 = self.layer2(torch.nn.ReLU()(out_layer1))
@@ -299,20 +310,30 @@ class SentenceBertWithPooler(BertPreTrainedModel):
             self.lm_head = BertLMPredictionHead(config)
             assert self.num_trainable_layers > 0, "number of trainable layers should be > 0 for mlm"           
 
-        # self.pooler = Pooler(word_embedding_dimension=self.config.hidden_size,
-        #                     pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
-        #                     pooling_mode_max_tokens=False,#self.args.max_pooling,
-        #                     pooling_mode_mean_tokens=True,#self.args.mean_pooling,
-        #                     mean_cat='cat',
-        #                     all_hidden_states=self.config.output_hidden_states)#self.args.pool_type)
+        masked = False
+        seq_len = self.args.seq_len
+        layers_for_parampooler = self.args.num_trainable_layers
 
-        # self.conv = Conv1DLayers(self.args.num_trainable_layers, self.args.seq_len, [512,512])
+        if self.args.use_1dconv:
+            conv_layers = list(map(int, self.args.conv_layers.split('-')))
+            self.conv = Conv1DLayers(self.args.num_trainable_layers, self.args.seq_len, conv_layers)
+            masked = True
+            seq_len = conv_layers[-1]
+            layers_for_parampooler = 1
 
-        self.pooler = GeneralParameterizedPooler(self.args.num_trainable_layers,
-                                                self.args.seq_len,
-                                                self.config.hidden_size,
-                                                already_masked=False
-                                                )
+        if self.args.use_parampooler:
+            self.pooler = GeneralParameterizedPooler(num_layers = layers_for_parampooler,
+                                                    seq_len = seq_len,
+                                                    hidden_dim = self.config.hidden_size,
+                                                    already_masked=masked
+                                                    )
+        else:
+            self.pooler = Pooler(word_embedding_dimension= self.config.hidden_size,
+                                pooling_mode_cls_token=False,#,self.args.cls_pooling, #TODO Fix it
+                                pooling_mode_max_tokens=False,#self.args.max_pooling,
+                                pooling_mode_mean_tokens=True,#self.args.mean_pooling,
+                                mean_cat='cat',
+                                already_masked=masked)#self.args.pool_type)
 
         sizes = [self.pooler.get_sentence_embedding_dimension()] + list(map(int, self.args.projector.split('-')))
 
@@ -363,10 +384,16 @@ class SentenceBertWithPooler(BertPreTrainedModel):
             return_dict=return_dict,
         )
 
-        # conved_output = self.conv(bert_output,attention_mask)
-        # pooled = self.pooler(token_embeddings=[conved_output],attention_mask=attention_mask)
+        token_embeddings=bert_output.hidden_states[-self.args.num_trainable_layers:]
 
-        pooled = self.pooler(token_embeddings=bert_output.hidden_states[-self.args.num_trainable_layers:],attention_mask=attention_mask)
+        if self.args.use_1dconv:
+            conved_output = self.conv(bert_output,attention_mask)
+            token_embeddings=conved_output
+        
+        if self.args.use_parampooler:              
+            pooled = self.pooler(token_embeddings=token_embeddings,attention_mask=attention_mask)
+        else:
+            pooled = self.pooler(token_embeddings=token_embeddings,attention_mask=attention_mask)
         # output['token_embeddings'] = pooled['token_embeddings']
 
         projected = self.projector(pooled['sentence_embedding'])

@@ -39,10 +39,10 @@ def args_parse():
 
     parser.add_argument('--checkpoint_dir', 
                         type=Path,
-                        required=True,
+                        required=False,
                         default='')    
     parser.add_argument('--checkpoint', 
-                        type=str,
+                        type=Path,
                         required=False,
                         default='')
     parser.add_argument('--result_filename', 
@@ -50,7 +50,7 @@ def args_parse():
                         default='_results')
     parser.add_argument("--task_set", type=str, 
             choices=['sts', 'sts_dev', 'transfer', 'full', 'na'],
-            default='sts_dev',
+            default='sts',
             help="What set of tasks to evaluate on. If not 'na', this will override '--tasks'")
     parser.add_argument("--mode", type=str, 
             choices=['dev', 'test', 'fasttest'],
@@ -65,6 +65,7 @@ def args_parse():
                         choices=list_of_tasks)
 
     tmp_args = "--checkpoint_dir /mounts/data/proj/jabbar/barlowbert/checkpoint/bert_conv1dpooler_trainable3_bs32_5mil_4096_2_skipsched/".split()
+    ckpt_args = "--checkpoint /mounts/Users/cisintern/jabbar/data/barlowbert/checkpoint/bert_vicreg2_trainable3_bs32_5mil_4096_2_skipsched_onlybarlow/epoch=2-step=299999.ckpt".split()
     args = parser.parse_args()
     return args
 
@@ -164,66 +165,67 @@ def main(args):
         se = senteval.engine.SE(params, batcher, prepare)
         result = se.eval(task)
         results[task] = result
-    
+
+    return results   
    # Print evaluation results
-    if args.mode == 'dev':
-#         pdb.set_trace()
-        print("------ %s ------" % (args.mode))
+#     if args.mode == 'dev':
+# #         pdb.set_trace()
+#         print("------ %s ------" % (args.mode))
 
-        task_names = []
-        scores = []
-        for task in ['STSBenchmark', 'SICKRelatedness']:
-            task_names.append(task)
-            if task in results:
-                scores.append("%.2f" % (results[task]['dev']['spearman'][0] * 100))
-            else:
-                scores.append("0.00")
-        # print_table(task_names, scores)
+#         task_names = []
+#         scores = []
+#         for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']:
+#             task_names.append(task)
+#             if task in results:
+#                 scores.append("%.2f" % (results[task]['dev']['spearman'][0] * 100))
+#             else:
+#                 scores.append("0.00")
+#         # print_table(task_names, scores)
 
-        # task_names = []
-        # scores = []
-        for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
-            task_names.append(task)
-            if task in results:
-                scores.append("%.2f" % (results[task]['devacc']))    
-            else:
-                scores.append("0.00")
-        task_names.append("Avg.")
-        scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+#         # task_names = []
+#         # scores = []
+#         for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
+#             task_names.append(task)
+#             if task in results:
+#                 scores.append("%.2f" % (results[task]['devacc']))    
+#             else:
+#                 scores.append("0.00")
+#         task_names.append("Avg.")
+#         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
+#         print_table(task_names, scores)
 
-    elif args.mode == 'test' or args.mode == 'fasttest':
-#         pdb.set_trace()
-        print("------ %s ------" % (args.mode))
+#     elif args.mode == 'test' or args.mode == 'fasttest':
+# #         pdb.set_trace()
+#         print("------ %s ------" % (args.mode))
 
-        task_names = []
-        scores = []
-        for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']:
-            task_names.append(task)
-            if task in results:
-                if task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']:
-                    scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100)) 
-                else:
-                    scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100)) 
-            else:
-                scores.append("0.00")
-        task_names.append("Avg.")
-        scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        # print_table(task_names, scores)
+#         task_names = []
+#         scores = []
+#         for task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16', 'STSBenchmark', 'SICKRelatedness']:
+#             task_names.append(task)
+#             if task in results:
+#                 if task in ['STS12', 'STS13', 'STS14', 'STS15', 'STS16']:
+#                     scores.append("%.2f" % (results[task]['all']['spearman']['all'] * 100)) 
+#                 else:
+#                     scores.append("%.2f" % (results[task]['test']['spearman'].correlation * 100)) 
+#             else:
+#                 scores.append("0.00")
+#         task_names.append("Avg.")
+#         scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
+#         # print_table(task_names, scores)
 
-        # task_names = []
-        # scores = []
-        # for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
-        #     task_names.append(task)
-        #     if task in results:
-        #         scores.append("%.2f" % (results[task]['acc']))    
-        #     else:
-        #         scores.append("0.00")
-        # task_names.append("Avg.")
-        # scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
-        print_table(task_names, scores)
+#         # task_names = []
+#         # scores = []
+#         # for task in ['MR', 'CR', 'SUBJ', 'MPQA', 'SST2', 'TREC', 'MRPC']:
+#         #     task_names.append(task)
+#         #     if task in results:
+#         #         scores.append("%.2f" % (results[task]['acc']))    
+#         #     else:
+#         #         scores.append("0.00")
+#         # task_names.append("Avg.")
+#         # scores.append("%.2f" % (sum([float(score) for score in scores]) / len(scores)))
+#         print_table(task_names, scores)
     
-    return (task_names, scores)
+#     return (results,task_names, scores)
 
         
     # args.result_filename = args.checkpoint + args.result_filename + '.pkl'
@@ -239,6 +241,7 @@ if __name__=='__main__':
     logging.basicConfig(format='%(asctime)s : %(message)s', level=logging.ERROR)
     args = args_parse()
 
+    # results, task_names, scores = main(args)
     all_checkpoints = list(Path(args.checkpoint_dir).glob('*.ckpt'))
     all_checkpoints.sort(key=os.path.getctime)
 
@@ -264,12 +267,17 @@ if __name__=='__main__':
                 print(f'Skipping epoch {epoch}, step {step}.')
                 continue
         args.checkpoint = str(ckpt)
-        task_names, scores = main(args)
+        # pdb.set_trace()
+        results = main(args)
+        result_file = f"results_{args.mode}_{str(ckpt.parent).split('/')[-1]}_step_{step}.pkl"
+        pickle.dump(results,open(result_file,'wb')) 
+    #     results, task_names, scores = main(args)
 
-        result_row = dict(zip(task_names,scores))
-        result_row['epoch']=epoch
-        result_row['step']=step
-        all_results = all_results.append(result_row,ignore_index=True)
+    #     result_row = dict(zip(task_names,scores))
+    #     result_row['epoch']=epoch
+    #     result_row['step']=step
+    #     all_results = all_results.append(result_row,ignore_index=True)
         
-    all_results.to_csv(filename)
+    # all_results.to_csv(filename)
+    # pickle.dump(results,args.checkpoint+'.pkl')
         
